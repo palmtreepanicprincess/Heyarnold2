@@ -42,6 +42,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.AnimatedContent
@@ -167,6 +169,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size as ComposeSize
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -1907,16 +1910,41 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
 }
 
 // ---------- Shared bits ----------
+fun isNightNow(): Boolean {
+    val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    return h >= 19 || h < 7
+}
+
 @Composable
-fun ScreenHeader(title: String, onRoom: () -> Unit, right: @Composable () -> Unit = {}) {
-    Row(
-        Modifier.fillMaxWidth().background(RoomCard).padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onRoom) { Icon(Icons.Filled.ArrowBack, "Back to room", tint = RoomSky) }
-        Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        right()
+fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, right: @Composable () -> Unit = {}) {
+    // Every list screen now opens with a slice of the room itself:
+    // the painting as a banner (day/night by the same clock as the
+    // room), an ink line and a colored line under it in the two-tone
+    // style of the room's rings — so leaving the room doesn't leave
+    // its world behind (the cohesion pass, 2026-11-10).
+    val night = remember { isNightNow() }
+    val bmp = rememberRoomBitmap(false, night)
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(62.dp)) {
+            if (bmp != null) {
+                Image(bmp.asImageBitmap(), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
+            }
+            Box(Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(listOf(Color(0xE810131A), Color(0xA610131A)))
+            ))
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onRoom) { Icon(Icons.Filled.ArrowBack, "Back to room", tint = Color.White) }
+                Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                right()
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF10131A)))
+        Box(Modifier.fillMaxWidth().height(2.dp).background(accent))
     }
 }
 
@@ -2048,11 +2076,11 @@ fun CategoriesScreen(
     onRoom: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("The Shelves — Categories", onRoom)
+        ScreenHeader("The Shelves — Categories", onRoom, accent = Color(0xFF7C4DFF))
         LazyColumn(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = onShows).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2067,7 +2095,7 @@ fun CategoriesScreen(
             }
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = onMovieFolders).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2091,7 +2119,7 @@ fun CategoriesScreen(
                     Filter.ALL -> Icons.Filled.Star
                 }
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = { onPick(f) }).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2127,7 +2155,7 @@ fun ShowsScreen(
     onRoom: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("TV Shows — Folders & Seasons", onRoom)
+        ScreenHeader("TV Shows — Folders & Seasons", onRoom, accent = Color(0xFF7C4DFF))
         if (shows.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -2145,7 +2173,7 @@ fun ShowsScreen(
                     val watchedCount = sh.seasons.values.flatten().count { isWatched(it) }
                     val next = nextEpisode(sh, isWatched, savedPos)
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
                             .combinedClickable(onClick = { onPick(sh.title) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -2254,7 +2282,7 @@ fun ShowDetailScreen(
 @Composable
 fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onRoom: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Movies — by Folder", onRoom)
+        ScreenHeader("Movies — by Folder", onRoom, accent = Color(0xFFFFC107))
         if (folders.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -2269,7 +2297,7 @@ fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onR
             ) {
                 items(folders) { mf ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
                             .combinedClickable(onClick = { onPick(mf.key) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -2317,7 +2345,15 @@ fun LibraryScreen(
         }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(title, onRoom) {
+        ScreenHeader(title, onRoom, accent = when (title) {
+            Filter.MOVIES.label -> Color(0xFFFFC107)
+            Filter.TV.label -> Color(0xFF7C4DFF)
+            Filter.FAVORITES.label -> Color(0xFFF50057)
+            Filter.CONTINUE.label -> Color(0xFF00C853)
+            Filter.RECENT.label -> Color(0xFF00ACC1)
+            Filter.UNSORTED.label -> Color(0xFF90A4AE)
+            else -> Color(0xFFFF5722)
+        }) {
             if (onStats != null) {
                 TextButton(onClick = onStats) {
                     Text("Stats", color = RoomYellow, fontSize = 13.sp)
@@ -2406,7 +2442,7 @@ fun SearchScreen(
         if (query.isBlank()) items else items.filter { it.title.contains(query, ignoreCase = true) }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Search", onRoom)
+        ScreenHeader("Search", onRoom, accent = Color(0xFF2979FF))
         OutlinedTextField(
             value = query, onValueChange = { query = it },
             placeholder = { Text("Type a title…", color = RoomTextDim) },
@@ -2434,6 +2470,7 @@ fun StatCard(modifier: Modifier, label: String, value: String) {
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(RoomCard)
+            .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
             .padding(14.dp)
     ) {
         Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -2455,7 +2492,7 @@ fun StatsScreen(
         .sortedByDescending { savedPos(it) }
     val timeMs = videos.sumOf { v -> if (isWatched(v)) v.durationMs else savedPos(v) }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Your watching", onRoom)
+        ScreenHeader("Your watching", onRoom, accent = Color(0xFF00ACC1))
         LazyColumn(
             Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2511,7 +2548,7 @@ fun SettingsScreen(
     onRoom: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Settings", onRoom)
+        ScreenHeader("Settings", onRoom, accent = Color(0xFFFF5252))
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text("$videoCount videos found on this phone.", color = Color.White, fontSize = 16.sp) }
             if (!granted) item {
@@ -3638,7 +3675,21 @@ fun MusicLibraryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        val nightM = remember { isNightNow() }
+        val bannerM = rememberRoomBitmap(false, nightM)
+        Box(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+        ) {
+            if (bannerM != null) {
+                Image(bannerM.asImageBitmap(), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(), alignment = Alignment.TopCenter)
+                Box(Modifier.matchParentSize().background(Color(0xB310131A)))
+            }
+            Row(
+                Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             IconButton(onClick = {
                 if (inDetail) {
                     albumPick = null
@@ -3646,7 +3697,7 @@ fun MusicLibraryScreen(
                     playlistPick = null
                 } else onRoom()
             }) {
-                Icon(Icons.Filled.ArrowBack, "Back", tint = RoomTextDim)
+                Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
             }
             Text(
                 when {
@@ -3662,8 +3713,9 @@ fun MusicLibraryScreen(
             if (!inDetail) {
                 Text(
                     "${songs.size} songs • ${albums.size} albums • ${artists.size} artists",
-                    color = RoomTextDim, fontSize = 12.sp
+                    color = Color(0xFFC9D4E3), fontSize = 12.sp
                 )
+            }
             }
         }
         if (!audioGranted) {
@@ -3794,13 +3846,22 @@ fun MusicLibraryScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row {
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             listOf("Songs", "Albums", "Artists", "Favorites", "Playlists").forEachIndexed { i, label ->
-                TextButton(onClick = { tab = i }) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(50))
+                        .background(if (tab == i) MusicAccent else Color(0xFF232A33))
+                        .border(1.5.dp, if (tab == i) Color(0xFF10131A) else Color(0xFF39424E), RoundedCornerShape(50))
+                        .clickable { tab = i }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
                     Text(
                         label,
-                        color = if (tab == i) MusicAccent else RoomTextDim,
-                        fontWeight = FontWeight.Bold, fontSize = 14.5.sp
+                        color = if (tab == i) Color(0xFF10131A) else RoomTextDim,
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp
                     )
                 }
             }
