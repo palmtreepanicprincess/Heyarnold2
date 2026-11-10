@@ -133,6 +133,15 @@ class RadioService : Service() {
         RadioState.buffering = false
     }
 
+    // Swiping the app away in the task switcher stops the radio
+    // too (May, 2026-11-10): same rule as the music player.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopStream()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         stopStream()
         super.onDestroy()
