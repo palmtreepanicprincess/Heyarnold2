@@ -1508,7 +1508,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     // Strengthened at her word (2026-11-10): the pulse now covers
     // the whole icon — full strength held out to the ring's edge —
     // and swings a little deeper so it reads clearly.
-    val glowAlpha = (0.22f + 0.38f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
+    val glowAlpha = (0.18f + 0.30f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
