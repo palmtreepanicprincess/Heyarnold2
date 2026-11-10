@@ -42,7 +42,16 @@ val fetchBalooFont = tasks.register<Exec>("fetchBalooFont") {
         "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/baloo2/Baloo2%5Bwght%5D.ttf"
     )
 }
-tasks.named("preBuild") { dependsOn(fetchBalooFont) }
+val balooBoldFile = layout.projectDirectory.file("src/main/res/font/baloo2_bold.ttf").asFile
+val fetchBalooBoldFont = tasks.register<Exec>("fetchBalooBoldFont") {
+    onlyIf { !balooBoldFile.exists() || balooBoldFile.length() < 10_000 }
+    doFirst { balooBoldFile.parentFile.mkdirs() }
+    commandLine(
+        "curl", "-g", "-fL", "--retry", "3", "-o", balooBoldFile.absolutePath,
+        "https://fonts.gstatic.com/s/baloo2/v23/wXK0E3kTposypRydzVT08TS3JnAmtdj9yqpv.ttf"
+    )
+}
+tasks.named("preBuild") { dependsOn(fetchBalooFont); dependsOn(fetchBalooBoldFont) }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
