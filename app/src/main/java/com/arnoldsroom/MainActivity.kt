@@ -5,8 +5,17 @@ import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
 import android.util.Rational
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.widget.RemoteViews
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -122,7 +131,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -150,9 +159,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -233,6 +245,7 @@ sealed class Screen {
     data class FolderDetail(val key: String) : Screen()
     object Search : Screen()
     object Settings : Screen()
+    object Stats : Screen()
     data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String) : Screen()
 }
 
@@ -426,10 +439,44 @@ object PipControl {
     var inPip by mutableStateOf(false)
 }
 
+// Set by the home-screen widget (or a fresh launch) when it wants the app
+// to jump straight back into the last-watched video.
+object ContinueRequest {
+    var videoId by mutableStateOf(-1L)
+}
+
+class ContinueWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        val prefs = context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
+        val title = prefs.getString("last_title", null) ?: "Nothing yet — watch something first"
+        val lastId = prefs.getLong("last_id", -1L)
+        for (id in ids) {
+            val views = RemoteViews(context.packageName, R.layout.widget_continue)
+            views.setTextViewText(R.id.widget_title, title)
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("continue_video_id", lastId)
+            }
+            val pending = PendingIntent.getActivity(
+                context, id, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_root, pending)
+            manager.updateAppWidget(id, views)
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent?.let { ContinueRequest.videoId = it.getLongExtra("continue_video_id", -1L) }
         setContent { ArnoldsRoomApp() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        ContinueRequest.videoId = intent.getLongExtra("continue_video_id", -1L)
     }
 
     override fun onUserLeaveHint() {
@@ -526,6 +573,19 @@ fun ArnoldsRoomApp() {
     }
     LaunchedEffect(granted) {
         if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+    }
+
+    // The home-screen widget asks to jump straight back into a video.
+    LaunchedEffect(ContinueRequest.videoId, videos) {
+        val id = ContinueRequest.videoId
+        if (id != -1L && videos.isNotEmpty()) {
+            videos.firstOrNull { it.id == id }?.let { v ->
+                pauseMusic()
+                miniQueue = null
+                screen = Screen.Player(listOf(v), 0, "Continue")
+            }
+            ContinueRequest.videoId = -1L
+        }
     }
 
     fun go(dest: Screen, needsVideos: Boolean = true) {
@@ -671,7 +731,8 @@ fun ArnoldsRoomApp() {
                 isFav = ::isFav,
                 savedPos = ::savedPos,
                 onPlay = { queue, idx -> screen = Screen.Player(queue, idx, s.filter.label) },
-                onRoom = { screen = Screen.Room }
+                onRoom = { screen = Screen.Room },
+                onStats = { screen = Screen.Stats }
             )
             is Screen.Search -> SearchScreen(
                 items = videos,
@@ -691,6 +752,14 @@ fun ArnoldsRoomApp() {
                     videos.forEach { ed.remove("pos_${it.id}") }
                     ed.apply()
                 },
+                onRoom = { screen = Screen.Room }
+            )
+            is Screen.Stats -> StatsScreen(
+                videos = videos,
+                prefs = prefs,
+                isWatched = ::isWatched,
+                savedPos = ::savedPos,
+                showsCount = detectShows(videos, ::catOf).size,
                 onRoom = { screen = Screen.Room }
             )
             is Screen.Player -> PlayerScreen(
@@ -786,7 +855,7 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 // Each hotspot is drawn as an outline of the thing it stands for — a TV
 // outline over the TV, a bed over the bed, a door over the door — traced
 // twice: a dark halo so it reads on the busy painting, then the color.
-fun DrawScope.objectOutline(kind: String, color: Color, sw: Float) {
+fun DrawScope.objectOutline(kind: String, color: Color, sw: Float, fishCx: Float = 47f, fishDir: Float = 1f) {
     val w = size.width
     val h = size.height
     fun x(u: Float) = w * u / 100f
@@ -798,7 +867,7 @@ fun DrawScope.objectOutline(kind: String, color: Color, sw: Float) {
     fun rrect(l: Float, t: Float, r: Float, b: Float, rad: Float) = drawRoundRect(
         color,
         topLeft = pt(l, t),
-        size = Size(x(r) - x(l), y(b) - y(t)),
+        size = ComposeSize(x(r) - x(l), y(b) - y(t)),
         cornerRadius = CornerRadius(x(rad), x(rad)),
         style = stroke
     )
@@ -852,18 +921,18 @@ fun DrawScope.objectOutline(kind: String, color: Color, sw: Float) {
             drawPath(wave, color, style = stroke)
             drawOval(
                 color,
-                topLeft = pt(34f, 40f),
-                size = Size(x(24f), y(13f)),
+                topLeft = pt(fishCx - 12f, 40f),
+                size = ComposeSize(x(24f), y(13f)),
                 style = stroke
             )
             val tail = Path().apply {
-                moveTo(x(58f), y(46f))
-                lineTo(x(71f), y(37f))
-                lineTo(x(71f), y(55f))
+                moveTo(x(fishCx + 12f * fishDir), y(46f))
+                lineTo(x(fishCx + 25f * fishDir), y(37f))
+                lineTo(x(fishCx + 25f * fishDir), y(55f))
                 close()
             }
             drawPath(tail, color, style = stroke)
-            dot(42f, 45f, 1.8f)
+            dot(fishCx - 6f * fishDir, 45f, 1.8f)
             line(pt(28f, 64f), pt(24f, 86f))
             line(pt(72f, 64f), pt(76f, 86f))
             line(pt(18f, 86f), pt(82f, 86f))
@@ -908,6 +977,19 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, compact: Boolean, onTap
             scale.animateTo(1.14f, tween(140))
         }
     }
+    // The fish in the Favorites tank swims back and forth.
+    var swimT by remember { mutableStateOf(0f) }
+    LaunchedEffect(spot.label) {
+        if (spot.label == "Favorites") {
+            while (true) {
+                swimT = (System.currentTimeMillis() % 6000L) / 6000f
+                delay(60)
+            }
+        }
+    }
+    val swimTri = if (swimT < 0.5f) swimT * 2f else 2f - swimT * 2f
+    val fishCx = 38f + swimTri * 18f
+    val fishDir = if (swimT < 0.5f) 1f else -1f
     Column(
         modifier = Modifier
             .graphicsLayer {
@@ -920,8 +1002,8 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, compact: Boolean, onTap
     ) {
         Box(Modifier.size(if (compact) 52.dp else 68.dp)) {
             Canvas(Modifier.fillMaxSize()) {
-                objectOutline(spot.label, Color(0xD910131A), 7.dp.toPx())
-                objectOutline(spot.label, if (tapped) RoomYellow else spot.color, 3.5.dp.toPx())
+                objectOutline(spot.label, Color(0xD910131A), 7.dp.toPx(), fishCx, fishDir)
+                objectOutline(spot.label, if (tapped) RoomYellow else spot.color, 3.5.dp.toPx(), fishCx, fishDir)
             }
         }
         Spacer(Modifier.height(2.dp))
@@ -1021,6 +1103,33 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.680f, 0.530f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
+    // Shake the phone while you're in the room and Shuffle plays something.
+    val sensorContext = LocalContext.current
+    DisposableEffect(Unit) {
+        val sm = sensorContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val accel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        var lastShake = 0L
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(e: SensorEvent) {
+                val gx = e.values[0] / SensorManager.GRAVITY_EARTH
+                val gy = e.values[1] / SensorManager.GRAVITY_EARTH
+                val gz = e.values[2] / SensorManager.GRAVITY_EARTH
+                val g = kotlin.math.sqrt(gx * gx + gy * gy + gz * gz)
+                if (g > 2.1f) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastShake > 1500L) {
+                        lastShake = now
+                        onShuffle()
+                    }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        if (sm != null && accel != null) {
+            sm.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose { sm?.unregisterListener(listener) }
+    }
     // The hint: shows on arrival, fades after 4 idle seconds, and comes back
     // whenever a blank spot in the room is tapped (which restarts the timer).
     var hintVisible by remember { mutableStateOf(true) }
@@ -1633,7 +1742,8 @@ fun LibraryScreen(
     isFav: (VideoItem) -> Boolean,
     savedPos: (VideoItem) -> Long,
     onPlay: (List<VideoItem>, Int) -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onStats: (() -> Unit)? = null
 ) {
     var sort by remember { mutableStateOf(SortMode.NEWEST) }
     var version by remember { mutableStateOf(0) }
@@ -1648,6 +1758,11 @@ fun LibraryScreen(
     }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(title, onRoom) {
+            if (onStats != null) {
+                TextButton(onClick = onStats) {
+                    Text("Stats", color = RoomYellow, fontSize = 13.sp)
+                }
+            }
             TextButton(onClick = {
                 sort = when (sort) { SortMode.NEWEST -> SortMode.NAME; SortMode.NAME -> SortMode.LONGEST; SortMode.LONGEST -> SortMode.NEWEST }
             }) { Text("Sort: ${sort.name.lowercase().replaceFirstChar { it.uppercase() }}", color = RoomYellow, fontSize = 13.sp) }
@@ -1754,6 +1869,80 @@ fun SearchScreen(
 
 // ---------- Settings ----------
 @Composable
+@Composable
+fun StatCard(modifier: Modifier, label: String, value: String) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(RoomCard)
+            .padding(14.dp)
+    ) {
+        Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = RoomTextDim, fontSize = 13.sp)
+    }
+}
+
+@Composable
+fun StatsScreen(
+    videos: List<VideoItem>,
+    prefs: SharedPreferences,
+    isWatched: (VideoItem) -> Boolean,
+    savedPos: (VideoItem) -> Long,
+    showsCount: Int,
+    onRoom: () -> Unit
+) {
+    val finished = videos.count { isWatched(it) }
+    val inProgress = videos.filter { savedPos(it) > 0L }
+        .sortedByDescending { savedPos(it) }
+    val timeMs = videos.sumOf { v -> if (isWatched(v)) v.durationMs else savedPos(v) }
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader("Your watching", onRoom)
+        LazyColumn(
+            Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard(Modifier.weight(1f), "Videos in the room", videos.size.toString())
+                    StatCard(Modifier.weight(1f), "Shows", showsCount.toString())
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard(Modifier.weight(1f), "Finished", finished.toString())
+                    StatCard(Modifier.weight(1f), "In progress", inProgress.size.toString())
+                }
+            }
+            item {
+                StatCard(Modifier.fillMaxWidth(), "Time watched, all together", fmtDur(timeMs))
+            }
+            if (inProgress.isNotEmpty()) {
+                item {
+                    Text(
+                        "Still in the middle of",
+                        color = RoomYellow, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                items(inProgress) { v ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .background(RoomCard).padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            v.title, color = Color.White, fontSize = 14.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text("${fmtDur(savedPos(v))} in", color = RoomTextDim, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
 fun SettingsScreen(
     videoCount: Int,
     granted: Boolean,
@@ -1807,7 +1996,10 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val exo = remember {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(
+            context,
+            DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        ).build().apply {
             val mediaItems = queue.map { MediaItem.fromUri(it.uri) }
             val startPos = queue.getOrNull(startIndex)?.let { prefs.getLong("pos_${it.id}", 0L) } ?: 0L
             val usable = queue.getOrNull(startIndex)?.let {
@@ -1829,6 +2021,23 @@ fun PlayerScreen(
     var fullscreen by remember { mutableStateOf(false) }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
+    var hasCc by remember { mutableStateOf(false) }
+    var ccOn by remember { mutableStateOf(true) }
+    var marks by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var showMarks by remember { mutableStateOf(false) }
+    var playerError by remember { mutableStateOf<String?>(null) }
+
+    fun loadMarks() {
+        val v = queue.getOrNull(index)
+        marks = if (v == null) emptyList()
+        else prefs.getString("marks_${v.id}", "")
+            ?.split(",")?.mapNotNull { it.trim().toLongOrNull() }?.sorted() ?: emptyList()
+    }
+    fun saveMarks(list: List<Long>) {
+        val v = queue.getOrNull(index) ?: return
+        prefs.edit().putString("marks_${v.id}", list.joinToString(",")).apply()
+        marks = list
+    }
 
     fun savePos(forIndex: Int, pos: Long) {
         queue.getOrNull(forIndex)?.let { v ->
@@ -1837,6 +2046,10 @@ fun PlayerScreen(
                 ed.remove("pos_${v.id}")
                 ed.putBoolean("watched_${v.id}", true)
             } else ed.putLong("pos_${v.id}", pos)
+            if (pos >= 1000L) {
+                ed.putLong("last_id", v.id)
+                ed.putString("last_title", v.title)
+            }
             ed.apply()
         }
     }
@@ -1854,6 +2067,16 @@ fun PlayerScreen(
             sleepChoice = 0
             sleepLeftMs = 0L
         }
+    }
+
+    LaunchedEffect(ccOn) {
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !ccOn).build()
+    }
+    LaunchedEffect(index) {
+        loadMarks()
+        showMarks = false
+        playerError = null
     }
 
     // Picture-in-picture: while an episode is playing, leaving the app pops
@@ -1886,6 +2109,10 @@ fun PlayerScreen(
                 index = exo.currentMediaItemIndex
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayerError(error: PlaybackException) {
+                playerError = "This file wouldn't play — its format may not be supported."
+                showControls = true
+            }
         }
         exo.addListener(listener)
         onDispose {
@@ -1901,6 +2128,7 @@ fun PlayerScreen(
             duration = exo.duration.coerceAtLeast(0)
             isPlaying = exo.isPlaying
             index = exo.currentMediaItemIndex
+            hasCc = exo.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
             if (!seeking) sliderPos = if (duration > 0) position.toFloat() / duration else 0f
             ticks++
             if (ticks % 10 == 0) savePos(index, position)
@@ -1980,6 +2208,27 @@ fun PlayerScreen(
                             Icon(Icons.Filled.Bedtime, "Sleep timer", tint = if (sleepChoice > 0) RoomYellow else Color.White, modifier = Modifier.size(19.dp))
                             if (sleepChoice > 0) Text(" ${(sleepLeftMs / 60000) + 1}m", color = RoomYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
+                        if (hasCc) {
+                            IconButton(onClick = { ccOn = !ccOn }) {
+                                Icon(
+                                    if (ccOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
+                                    "Captions", tint = if (ccOn) RoomYellow else Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                        IconButton(onClick = {
+                            val t = exo.currentPosition
+                            if (!marks.contains(t)) saveMarks((marks + t).sorted())
+                            showMarks = true
+                        }) {
+                            Icon(Icons.Filled.BookmarkAdd, "Save this moment", tint = Color.White, modifier = Modifier.size(21.dp))
+                        }
+                        if (marks.isNotEmpty()) {
+                            IconButton(onClick = { showMarks = !showMarks }) {
+                                Icon(Icons.Filled.Bookmarks, "Favorite moments", tint = RoomYellow, modifier = Modifier.size(21.dp))
+                            }
+                        }
                         IconButton(onClick = {
                             // Save the exact spot first, so the mini player
                             // continues right here instead of at the last
@@ -1992,6 +2241,36 @@ fun PlayerScreen(
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
                             Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                                 "Fullscreen", tint = Color.White)
+                        }
+                    }
+                    if (playerError != null) {
+                        Text(
+                            playerError!!, color = Color.White, fontSize = 14.sp,
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(Color(0xCC8F1D1D))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                    if (showMarks && marks.isNotEmpty()) {
+                        Column(
+                            Modifier.padding(start = 12.dp, top = 8.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(Color(0xE61D2130))
+                                .padding(10.dp)
+                        ) {
+                            Text("Favorite moments", color = RoomYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            marks.forEach { t ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        fmtDur(t), color = Color.White, fontSize = 14.sp,
+                                        modifier = Modifier
+                                            .combinedClickable(onClick = { exo.seekTo(t); exo.play() })
+                                            .padding(vertical = 4.dp, horizontal = 2.dp)
+                                    )
+                                    IconButton(onClick = { saveMarks(marks - t) }, modifier = Modifier.size(30.dp)) {
+                                        Icon(Icons.Filled.Delete, "Remove moment", tint = RoomTextDim, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.weight(1f))
@@ -2116,7 +2395,10 @@ fun MiniPlayerBox(
 ) {
     val context = LocalContext.current
     val exo = remember {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(
+            context,
+            DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+        ).build().apply {
             val items = queue.map { MediaItem.fromUri(it.uri) }
             val v = queue.getOrNull(startIndex)
             val startPos = v?.let { prefs.getLong("pos_${it.id}", 0L) } ?: 0L
@@ -2142,6 +2424,10 @@ fun MiniPlayerBox(
             ed.remove("pos_${v.id}")
             ed.putBoolean("watched_${v.id}", true)
         } else ed.putLong("pos_${v.id}", pos)
+        if (pos >= 1000L) {
+            ed.putLong("last_id", v.id)
+            ed.putString("last_title", v.title)
+        }
         ed.apply()
     }
     DisposableEffect(exo) {
@@ -2175,7 +2461,7 @@ fun MiniPlayerBox(
         var offX by remember { mutableStateOf<Float?>(null) }
         var offY by remember { mutableStateOf<Float?>(null) }
         val widthPx = with(density) { widthDp.toPx() }
-        val heightPx = widthPx * 9f / 16f + with(density) { 34.dp.toPx() }
+        val heightPx = widthPx * 9f / 16f + with(density) { 98.dp.toPx() }
         val x = (offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() }))
             .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
         val y = (offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() }))
@@ -2185,9 +2471,11 @@ fun MiniPlayerBox(
             Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                 .width(widthDp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF10131A))
-                .border(2.dp, RoomOrange, RoundedCornerShape(12.dp))
+                .shadow(10.dp, RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFFE8A04C))
+                .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(18.dp))
+                .padding(9.dp)
                 .graphicsLayer {
                     val a = appear.value
                     scaleX = 0.7f + 0.3f * a
@@ -2195,8 +2483,23 @@ fun MiniPlayerBox(
                     alpha = a
                 }
         ) {
+            // Rabbit-ear antennae, so the pop-up reads as an old TV in the room.
+            Canvas(
+                Modifier.width(96.dp).height(24.dp).align(Alignment.CenterHorizontally)
+            ) {
+                val swLine = 3.5.dp.toPx()
+                val base = Offset(size.width / 2, size.height)
+                val tipL = Offset(size.width * 0.08f, 3.dp.toPx())
+                val tipR = Offset(size.width * 0.92f, 3.dp.toPx())
+                drawLine(Color(0xFF10131A), base, tipL, strokeWidth = swLine, cap = StrokeCap.Round)
+                drawLine(Color(0xFF10131A), base, tipR, strokeWidth = swLine, cap = StrokeCap.Round)
+                drawCircle(Color(0xFF10131A), radius = 4.dp.toPx(), center = tipL)
+                drawCircle(Color(0xFF10131A), radius = 4.dp.toPx(), center = tipR)
+            }
             Box(
-                Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(8.dp)).background(Color.Black)
+                    .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -2236,9 +2539,23 @@ fun MiniPlayerBox(
                 }
             }
             Row(
+                Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 1.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                repeat(16) {
+                    Box(
+                        Modifier.width(2.dp).height(8.dp)
+                            .clip(RoundedCornerShape(1.dp)).background(Color(0xFF10131A))
+                    )
+                }
+            }
+            Spacer(Modifier.height(5.dp))
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .height(34.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFF8A5427))
                     .pointerInput(Unit) {
                         detectDragGestures { change, drag ->
                             change.consume()
