@@ -3,10 +3,8 @@ package com.arnoldsroom
 import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
-import android.app.PendingIntent
 import android.app.RemoteAction
 import android.content.BroadcastReceiver
-import android.content.IntentFilter
 import android.graphics.drawable.Icon
 import android.content.res.Configuration
 import android.util.Rational
@@ -701,12 +699,21 @@ fun ArnoldsRoomApp() {
             }
             music?.let { if (!it.isPlaying) it.start() }
         } catch (e: Exception) { /* music is a bonus, never crash over it */ }
-        // The city outside the window follows the song exactly —
-        // same switch, same rules (May, 2026-11-10).
-        try { if (city == null) city = CityAmbiencePlayer(); city?.start() } catch (e: Exception) { }
     }
     fun pauseMusic() {
         try { music?.let { if (it.isPlaying) it.pause() } } catch (e: Exception) { }
+    }
+    // The city outside the window answers to the FX button now,
+    // not the music button (May, 2026-11-10): the star that governs
+    // the twinkling stars and the sun glare governs the street
+    // sounds too — all the room's living effects on one switch.
+    // It keeps the song's room-presence rules (present in the room
+    // and the lists, silent while anything plays or the app is
+    // away); only the switch changed.
+    fun startCity() {
+        try { if (city == null) city = CityAmbiencePlayer(); city?.start() } catch (e: Exception) { }
+    }
+    fun stopCity() {
         try { city?.stop() } catch (e: Exception) { }
     }
 
@@ -800,13 +807,23 @@ fun ArnoldsRoomApp() {
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
-                Lifecycle.Event.ON_STOP -> pauseMusic()
+                Lifecycle.Event.ON_START -> {
+                    if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
+                    if (miniQueue == null && fxOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startCity()
+                }
+                Lifecycle.Event.ON_STOP -> { pauseMusic(); stopCity() }
                 else -> { }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(screen, fxOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+        if (fxOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        ) {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startCity()
+        } else stopCity()
     }
     LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
         // The room song is the app's ambience (May, 2026-11-10): it
@@ -2897,7 +2914,7 @@ fun SettingsScreen(
                     "• Remote on the rug — shuffle a random video\n" +
                     "• Joystick on the rug — your music: songs, albums, artists, favorites, and playlists you make yourself\n" +
                     "• Door — settings (you're here)\n\n" +
-                    "How the sound works: the room song is the app's ambience, and underneath it you can hear the street outside the window — traffic rolling by, a distant horn now and then. The music button in the room hushes the song and the city together. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
+                    "How the sound works: the room song is the app's ambience, and underneath it you can hear the street outside the window — traffic rolling by, a distant horn now and then. The music button in the room hushes the song; the city answers to the star (FX) button instead — one switch for all the room's living effects: the stars, the sun glare, and the street sounds. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
                     "Every list wears a strip of the room's painting at the top, in the same day or night as the room. The button in the room's top corner steps through dawn, day, dusk, and night — tap it to live in whichever light you like; left alone, the room follows the real clock. The star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
                     "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
