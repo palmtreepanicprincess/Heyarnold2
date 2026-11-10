@@ -558,6 +558,27 @@ object PipControl {
 
 const val PIP_TOGGLE_ACTION = "com.arnoldsroom.PIP_TOGGLE"
 
+// Pop-up memory (May, 2026-11-10): where she dragged each pop-up
+// and how big she made it now survives closing and reopening it,
+// for as long as the app runs. The states live in plain objects —
+// process memory, not storage — so a fresh launch starts clean,
+// exactly the "until I restart the app" she asked for.
+object RadioBoxState {
+    val offX = mutableStateOf<Float?>(null)
+    val offY = mutableStateOf<Float?>(null)
+    val widthDpF = mutableStateOf(292f)
+}
+object MiniTvState {
+    val offX = mutableStateOf<Float?>(null)
+    val offY = mutableStateOf<Float?>(null)
+    val widthDp = mutableStateOf(216.dp)
+}
+object MusicBoxState {
+    val offX = mutableStateOf(0f)
+    val offY = mutableStateOf(0f)
+    val widthDpF = mutableStateOf(288f)
+}
+
 // One builder for every PiP params need: the video's real aspect,
 // and (the fix for May's 2026-11-10 report) a real play/pause
 // ACTION on the window — without one, the floating player showed
@@ -965,7 +986,7 @@ fun ArnoldsRoomApp() {
         }
     }
 
-    BackHandler(enabled = screen !is Screen.Room) {
+    fun navigateBack() {
         when {
             showRadio -> showRadio = false
             backStack.isNotEmpty() -> {
@@ -976,6 +997,7 @@ fun ArnoldsRoomApp() {
             else -> navTo(Screen.Room)
         }
     }
+    BackHandler(enabled = screen !is Screen.Room) { navigateBack() }
 
     val libTick = libVersion
     MaterialTheme(typography = cartoonTypography()) {
@@ -1125,7 +1147,7 @@ fun ArnoldsRoomApp() {
             )
             is Screen.MusicPlayer -> MusicPlayerScreen(
                 prefs = prefs,
-                onBack = { screen = Screen.MusicLibrary },
+                onBack = { navigateBack() },
                 onShrink = {
                     showMusicMini = true
                     navTo(Screen.Room)
@@ -3494,12 +3516,12 @@ fun RadioPlayerBox(
         val density = LocalDensity.current
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
-        var widthDpF by remember { mutableStateOf(292f) }
+        var widthDpF by RadioBoxState.widthDpF
         val widthDp = widthDpF.dp
         val widthPx = with(density) { widthDp.toPx() }
         val heightPx = widthPx * (268f / 292f)
-        var offX by remember { mutableStateOf<Float?>(null) }
-        var offY by remember { mutableStateOf<Float?>(null) }
+        var offX by RadioBoxState.offX
+        var offY by RadioBoxState.offY
         val x = (offX ?: (maxWPx - widthPx) / 2f).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
         val y = (offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() }))
             .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
@@ -3774,9 +3796,9 @@ fun MiniPlayerBox(
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
         val maxWDpLocal = maxWidth
-        var widthDp by remember { mutableStateOf(216.dp) }
-        var offX by remember { mutableStateOf<Float?>(null) }
-        var offY by remember { mutableStateOf<Float?>(null) }
+        var widthDp by MiniTvState.widthDp
+        var offX by MiniTvState.offX
+        var offY by MiniTvState.offY
         val widthPx = with(density) { widthDp.toPx() }
         val heightPx = widthPx / videoAspect + with(density) { 98.dp.toPx() }
         val x = (offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() }))
@@ -4833,9 +4855,9 @@ fun MusicMiniBox(
 ) {
     val context = LocalContext.current
     val song = MusicState.current ?: return
-    var offX by remember { mutableStateOf(0f) }
-    var offY by remember { mutableStateOf(0f) }
-    var widthDpF by remember { mutableStateOf(288f) }
+    var offX by MusicBoxState.offX
+    var offY by MusicBoxState.offY
+    var widthDpF by MusicBoxState.widthDpF
     // The reels turn while the song plays and stop with it
     // (May, 2026-11-10: the music pop-up is a cassette player).
     var spin by remember { mutableStateOf(0f) }
