@@ -653,6 +653,17 @@ fun ArnoldsRoomApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
+    // A real back stack (May, 2026-11-10): Android's back button
+    // used to dump her straight back at the room from everywhere —
+    // now every step into the video and music menus remembers where
+    // it came from, and back retraces it one step at a time.
+    // Stepping into the Room clears the trail.
+    var backStack by remember { mutableStateOf<List<Screen>>(emptyList()) }
+    fun navTo(dest: Screen) {
+        if (dest == screen) return
+        backStack = if (dest is Screen.Room) emptyList() else backStack + screen
+        screen = dest
+    }
     var phaseOverride by remember { mutableStateOf<DayPhase?>(null) }
     val phase = phaseOverride ?: phaseForClock()
     val night = phase == DayPhase.NIGHT
@@ -781,7 +792,7 @@ fun ArnoldsRoomApp() {
             putExtra(MusicService.EXTRA_POS, 0L)
         }
         showMusicMini = true
-        screen = Screen.MusicPlayer
+        navTo(Screen.MusicPlayer)
     }
     LaunchedEffect(MusicState.playing) {
         if (MusicState.playing && radioActive) stopRadio()
@@ -882,7 +893,7 @@ fun ArnoldsRoomApp() {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         granted = ok
         if (ok) {
-            pendingDest?.let { screen = it }
+            pendingDest?.let { navTo(it) }
             pendingDest = null
         }
     }
@@ -904,7 +915,7 @@ fun ArnoldsRoomApp() {
             pendingDest = dest
             launcher.launch(videoPermission())
         } else {
-            screen = dest
+            navTo(dest)
         }
     }
 
@@ -938,7 +949,7 @@ fun ArnoldsRoomApp() {
             pauseMusic()
             val pool = videos.filter { isEntertainment(it) }
             val src = if (pool.isNotEmpty()) pool else videos
-            screen = Screen.Player(src, src.indices.random(), "Shuffle")
+            navTo(Screen.Player(src, src.indices.random(), "Shuffle")
         }
     }
 
@@ -955,10 +966,14 @@ fun ArnoldsRoomApp() {
     }
 
     BackHandler(enabled = screen !is Screen.Room) {
-        screen = when {
-            screen is Screen.Player -> Screen.Library(Filter.ALL)
-            screen is Screen.MusicPlayer -> Screen.MusicLibrary
-            else -> Screen.Room
+        when {
+            showRadio -> showRadio = false
+            backStack.isNotEmpty() -> {
+                screen = backStack.last()
+                backStack = backStack.dropLast(1)
+            }
+            screen is Screen.MusicPlayer -> screen = Screen.MusicLibrary
+            else -> navTo(Screen.Room)
         }
     }
 
@@ -1003,7 +1018,7 @@ fun ArnoldsRoomApp() {
                         val pool = videos.filter { isEntertainment(it) }
                         val src = if (pool.isNotEmpty()) pool else videos
                         val pick = src.indices.random()
-                        screen = Screen.Player(src, pick, "Shuffle")
+                        navTo(Screen.Player(src, pick, "Shuffle")
                     }
                 }
             )
@@ -1011,17 +1026,17 @@ fun ArnoldsRoomApp() {
                 counts = Filter.values().associateWith { filtered(it).size },
                 showsCount = detectShows(videos, ::catOf).size,
                 movieFolderCount = detectMovieFolders(videos, ::catOf).size,
-                onPick = { screen = Screen.Library(it) },
-                onShows = { screen = Screen.Shows },
-                onMovieFolders = { screen = Screen.MovieFolders },
-                onRoom = { screen = Screen.Room }
+                onPick = { navTo(Screen.Library(it) },
+                onShows = { navTo(Screen.Shows) },
+                onMovieFolders = { navTo(Screen.MovieFolders) },
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.Shows -> ShowsScreen(
                 shows = detectShows(videos, ::catOf),
                 isWatched = ::isWatched,
                 savedPos = ::savedPos,
-                onPick = { screen = Screen.ShowDetail(it) },
-                onRoom = { screen = Screen.Room }
+                onPick = { navTo(Screen.ShowDetail(it) },
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.ShowDetail -> {
                 val show = detectShows(videos, ::catOf).firstOrNull { it.title == s.showTitle }
@@ -1032,23 +1047,23 @@ fun ArnoldsRoomApp() {
                         isWatched = ::isWatched,
                         savedPos = ::savedPos,
                         onToggleWatched = ::toggleWatched,
-                        onPlay = { queue, idx -> screen = Screen.Player(queue, idx, s.showTitle) },
-                        onRoom = { screen = Screen.Room }
+                        onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.showTitle) },
+                        onRoom = { navTo(Screen.Room) }
                     )
                 } else {
                     ShowsScreen(
                         shows = detectShows(videos, ::catOf),
                         isWatched = ::isWatched,
                         savedPos = ::savedPos,
-                        onPick = { screen = Screen.ShowDetail(it) },
-                        onRoom = { screen = Screen.Room }
+                        onPick = { navTo(Screen.ShowDetail(it) },
+                        onRoom = { navTo(Screen.Room) }
                     )
                 }
             }
             is Screen.MovieFolders -> MovieFoldersScreen(
                 folders = detectMovieFolders(videos, ::catOf),
-                onPick = { screen = Screen.FolderDetail(it) },
-                onRoom = { screen = Screen.Room }
+                onPick = { navTo(Screen.FolderDetail(it) },
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.FolderDetail -> {
                 val folder = detectMovieFolders(videos, ::catOf).firstOrNull { it.key == s.key }
@@ -1059,8 +1074,8 @@ fun ArnoldsRoomApp() {
                     catOf = ::catOf,
                     isFav = ::isFav,
                     savedPos = ::savedPos,
-                    onPlay = { queue, idx -> screen = Screen.Player(queue, idx, folder?.title ?: "Movies") },
-                    onRoom = { screen = Screen.Room }
+                    onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies") },
+                    onRoom = { navTo(Screen.Room) }
                 )
             }
             is Screen.Library -> LibraryScreen(
@@ -1070,9 +1085,9 @@ fun ArnoldsRoomApp() {
                 catOf = ::catOf,
                 isFav = ::isFav,
                 savedPos = ::savedPos,
-                onPlay = { queue, idx -> screen = Screen.Player(queue, idx, s.filter.label) },
-                onRoom = { screen = Screen.Room },
-                onStats = { screen = Screen.Stats }
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label) },
+                onRoom = { navTo(Screen.Room) },
+                onStats = { navTo(Screen.Stats) }
             )
             is Screen.Search -> SearchScreen(
                 items = videos,
@@ -1080,8 +1095,8 @@ fun ArnoldsRoomApp() {
                 catOf = ::catOf,
                 isFav = ::isFav,
                 savedPos = ::savedPos,
-                onPlay = { queue, idx -> screen = Screen.Player(queue, idx, "Search") },
-                onRoom = { screen = Screen.Room }
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, "Search") },
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.Settings -> SettingsScreen(
                 videoCount = videos.size,
@@ -1092,7 +1107,7 @@ fun ArnoldsRoomApp() {
                     videos.forEach { ed.remove("pos_${it.id}") }
                     ed.apply()
                 },
-                onRoom = { screen = Screen.Room }
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.Stats -> StatsScreen(
                 videos = videos,
@@ -1100,20 +1115,20 @@ fun ArnoldsRoomApp() {
                 isWatched = ::isWatched,
                 savedPos = ::savedPos,
                 showsCount = detectShows(videos, ::catOf).size,
-                onRoom = { screen = Screen.Room }
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.MusicLibrary -> MusicLibraryScreen(
                 prefs = prefs,
                 onPlaySong = { q, idx -> playSongs(q, idx) },
-                onOpenPlayer = { screen = Screen.MusicPlayer },
-                onRoom = { screen = Screen.Room }
+                onOpenPlayer = { navTo(Screen.MusicPlayer) },
+                onRoom = { navTo(Screen.Room) }
             )
             is Screen.MusicPlayer -> MusicPlayerScreen(
                 prefs = prefs,
                 onBack = { screen = Screen.MusicLibrary },
                 onShrink = {
                     showMusicMini = true
-                    screen = Screen.Room
+                    navTo(Screen.Room)
                 }
             )
             is Screen.Player -> PlayerScreen(
@@ -1121,11 +1136,11 @@ fun ArnoldsRoomApp() {
                 startIndex = s.startIndex,
                 fromLabel = s.fromLabel,
                 prefs = prefs,
-                onBack = { screen = Screen.Library(Filter.ALL) },
+                onBack = { navTo(Screen.Library(Filter.ALL) },
                 onShrink = { idx ->
                     miniQueue = s.queue
                     miniIndex = idx
-                    screen = Screen.Room
+                    navTo(Screen.Room)
                 },
                 radioPause = radioActive || MusicState.playing
             )
@@ -1139,7 +1154,7 @@ fun ArnoldsRoomApp() {
                     prefs = prefs,
                     onExpand = { idx ->
                         miniQueue = null
-                        screen = Screen.Player(q, idx, "Mini player")
+                        navTo(Screen.Player(q, idx, "Mini player")
                     },
                     onClose = { miniQueue = null },
                     radioPause = radioActive || MusicState.playing
@@ -1156,7 +1171,7 @@ fun ArnoldsRoomApp() {
         }
         if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
             MusicMiniBox(
-                onExpand = { screen = Screen.MusicPlayer },
+                onExpand = { navTo(Screen.MusicPlayer) },
                 onClose = { showMusicMini = false }
             )
         }
@@ -2977,6 +2992,7 @@ fun PlayerScreen(
     var seeking by remember { mutableStateOf(false) }
     var sliderPos by remember { mutableStateOf(0f) }
     var fullscreen by remember { mutableStateOf(false) }
+    BackHandler(enabled = fullscreen) { fullscreen = false }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
     var hasCc by remember { mutableStateOf(false) }
@@ -4147,6 +4163,11 @@ fun MusicLibraryScreen(
     val albums = songs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
     val artists = songs.groupBy { it.artist }.entries.sortedBy { it.key.lowercase() }
     val inDetail = albumPick != null || artistPick != null || playlistPick != null
+    BackHandler(enabled = inDetail) {
+        albumPick = null
+        artistPick = null
+        playlistPick = null
+    }
 
     if (addToSong != null) {
         val target = addToSong!!
