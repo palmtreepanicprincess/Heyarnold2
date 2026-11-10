@@ -1261,7 +1261,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     var clockText by remember { mutableStateOf("") }
     var batteryPct by remember { mutableStateOf(-1) }
     LaunchedEffect(Unit) {
-        val fmt = java.text.SimpleDateFormat("h:mm", java.util.Locale.US)
+        val fmt = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US)
         while (true) {
             clockText = fmt.format(java.util.Date())
             try {
@@ -1314,23 +1314,32 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         val dayNightCrop = remember(roomBitmap, drawnW) {
             roomBitmap?.let { cropAround(it, if (tallMode) 0.93f else 0.955f, 0.04f, cornerFrac) }
         }
+        // ONE container holds the painting AND the buttons, sized and
+        // placed by the same rect — so on any screen, at any zoom, the
+        // buttons cannot drift off their things: they live in the
+        // painting's own coordinate system. (Before, the painting sat in
+        // its own full-screen layer and the buttons were placed
+        // separately; where the fill-zoom truly engaged, like the Razr,
+        // the two could disagree and the icons floated off their spots.)
+        val drawnWpx = with(LocalDensity.current) { drawnW.roundToPx() }
         Box(
-            Modifier.fillMaxSize().graphicsLayer {
-                scaleX = roomZoom.value
-                scaleY = roomZoom.value
-                transformOrigin = zoomOrigin
-            }
+            Modifier
+                .offset(x = offX, y = offY)
+                .size(width = drawnW, height = drawnH)
+                .graphicsLayer {
+                    scaleX = roomZoom.value
+                    scaleY = roomZoom.value
+                    transformOrigin = zoomOrigin
+                }
         ) {
             Crossfade(targetState = roomBitmap, animationSpec = tween(450), label = "roomArt") { bmp ->
                 if (bmp != null) {
-                    Box(Modifier.offset(x = offX, y = offY).size(width = drawnW, height = drawnH)) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = "Arnold's room",
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Arnold's room",
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
                     Box(
                         Modifier.fillMaxSize().background(
@@ -1341,27 +1350,24 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     )
                 }
             }
-        }
-        val drawnWpx = with(LocalDensity.current) { drawnW.roundToPx() }
-        activeSpots.forEachIndexed { i, spot ->
-            val cx = offX + drawnW * spot.fx
-            val cy = offY + drawnH * spot.fy
-            Box(
-                Modifier.offset(
-                    x = cx - if (tallMode) 26.dp else 34.dp,
-                    y = cy - if (tallMode) 26.dp else 34.dp
-                )
-            ) {
-                RoomChip(
-                    spot = spot,
-                    art = roomBitmap,
-                    imgWpx = drawnWpx,
-                    index = i,
-                    tapped = tappedLabel == spot.label,
-                    compact = tallMode,
-                    pulse = if (interacted) 0.45f else pulseVal,
-                    onTap = { activate(spot) }
-                )
+            activeSpots.forEachIndexed { i, spot ->
+                Box(
+                    Modifier.offset(
+                        x = drawnW * spot.fx - if (tallMode) 26.dp else 34.dp,
+                        y = drawnH * spot.fy - if (tallMode) 26.dp else 34.dp
+                    )
+                ) {
+                    RoomChip(
+                        spot = spot,
+                        art = roomBitmap,
+                        imgWpx = drawnWpx,
+                        index = i,
+                        tapped = tappedLabel == spot.label,
+                        compact = tallMode,
+                        pulse = if (interacted) 0.45f else pulseVal,
+                        onTap = { activate(spot) }
+                    )
+                }
             }
         }
         AnimatedVisibility(
@@ -1380,13 +1386,26 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
-        Text(
-            clockText,
-            fontFamily = HandwrittenFont,
-            color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
-            fontSize = 20.sp,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp)
-        )
+        Row(
+            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                clockText,
+                fontFamily = HandwrittenFont,
+                color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+                fontSize = 20.sp
+            )
+            if (batteryPct >= 0) {
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    "$batteryPct%",
+                    fontFamily = HandwrittenFont,
+                    color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+                    fontSize = 17.sp
+                )
+            }
+        }
         Text(
             "Series created by Craig Bartlett\nApp created by May Marquardt",
             fontFamily = HandwrittenFont,
@@ -1485,19 +1504,6 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .background(Color(0xAA10131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
-            if (batteryPct >= 0) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "$batteryPct%",
-                    color = Color(0xFFFFF3E0),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xAA10131A))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                )
-            }
         }
     }
 }
