@@ -735,7 +735,863 @@ fun ArnoldsRoomApp() {
     fun pauseMusic() {
         try { music?.let { if (it.isPlaying) it.pause() } } catch (e: Exception) { }
     }
-    // The city outside the window (May, 2026-11-10): no audio
+    // The city outside the window answers to the FX button now,
+    // not the music button (May, 2026-11-10): the star that governs
+    // the twinkling stars and the sun glare governs the street
+    // sounds too — all the room's living effects on one switch.
+    // It keeps the song's room-presence rules (present in the room
+    // and the lists, silent while anything plays or the app is
+    // away); only the switch changed.
+    fun startCity() {
+        try { if (city == null) city = CityAmbiencePlayer(); city?.start() } catch (e: Exception) { }
+    }
+    fun stopCity() {
+        try { city?.stop() } catch (e: Exception) { }
+    }
+
+    // ----- Nightwave Plaza radio (May, 2026-11-10): a live vaporwave
+    // stream in a draggable pop-up, opened from a ring in the room.
+    // Playing it takes over the room's sound: the room song pauses,
+    // and any video — full player or mini pop-up — pauses too (the
+    // players watch radioActive and pause themselves). The stream
+    // itself lives in RadioService, a foreground service, so it keeps
+    // playing when she leaves the app; these just read its state and
+    // send it play/stop orders.
+    var showRadio by remember { mutableStateOf(false) }
+    val radioPlaying = RadioState.playing
+    val radioBuffering = RadioState.buffering
+    val radioActive = radioPlaying || radioBuffering
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun stopRadio() {
+        try {
+            context.startService(Intent(context, RadioService::class.java).setAction(RadioService.ACTION_STOP))
+        } catch (e: Exception) { }
+        // The room song restarts by itself via the music effect once
+        // the service reports the stream has stopped.
+    }
+    fun startRadio() {
+        pauseMusic()
+        // The radio takes the room's sound over completely: her own
+        // music player pauses too.
+        try {
+            context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
+        } catch (e: Exception) { }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            try { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (e: Exception) { }
+        }
+        try {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, RadioService::class.java).setAction(RadioService.ACTION_PLAY)
+            )
+        } catch (e: Exception) { }
+    }
+    // ----- Her own music player (May, 2026-11-10): the joystick on
+    // the rug opens a full music library + player for the songs on
+    // her phone, with a pop-up mini player like the video one. The
+    // playback itself lives in MusicService; starting a song takes
+    // over the room's sound (radio stops, room song and videos
+    // pause), and starting a video or the radio pauses it back.
+    var showMusicMini by remember { mutableStateOf(false) }
+    fun playSongs(queue: List<SongItem>, index: Int) {
+        if (radioActive) stopRadio()
+        pauseMusic()
+        // Her controls outside the app live in the music
+        // notification — make sure Android will actually show it.
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            try { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (e: Exception) { }
+        }
+        MusicState.queue = queue
+        // Songs always start from the beginning when she picks one —
+        // no resume memory (her call, 2026-11-10).
+        musicAction(context, MusicService.ACTION_PLAY_QUEUE) {
+            putExtra(MusicService.EXTRA_INDEX, index)
+            putExtra(MusicService.EXTRA_POS, 0L)
+        }
+        showMusicMini = true
+        navTo(Screen.MusicPlayer)
+    }
+    LaunchedEffect(MusicState.playing) {
+        if (MusicState.playing && radioActive) stopRadio()
+    }
+    LaunchedEffect(screen) {
+        if (screen is Screen.Player) {
+            try {
+                context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
+            } catch (e: Exception) { }
+            // The video she tapped takes the room's sound over
+            // completely — the Plaza stream stops too, the same
+            // takeover her songs and the radio already do to each
+            // other.
+            if (radioActive) stopRadio()
+            // Mark her songs paused right away too: the video players
+            // hush themselves while MusicState.playing reads true, and
+            // waiting for the service to report back could leave the
+            // video she tapped frozen on its first frame.
+            MusicState.playing = false
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, screen) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
+                    if (miniQueue == null && fxOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startCity()
+                }
+                Lifecycle.Event.ON_STOP -> { pauseMusic(); stopCity() }
+                else -> { }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(screen, fxOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+        if (fxOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        ) {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startCity()
+        } else stopCity()
+    }
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+        // The room song is the app's ambience (May, 2026-11-10): it
+        // keeps playing while she browses — the libraries, shelves,
+        // search, stats, settings — and only yields when something
+        // else actually plays: one of her songs, the radio, or a
+        // video (the full video player and the music player's own
+        // screen stay quiet for whatever is loaded there). It still
+        // waits until the doors have fully opened first.
+        if (musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        ) {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
+        } else pauseMusic()
+    }
+    // Keeper (May, 2026-11-10 — "make the app's music play in the
+    // settings too"): while the ambience is wanted, check every
+    // couple of seconds and restart the song if anything stopped it
+    // along the way, so it can never silently go missing from a
+    // screen where it belongs.
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+        val wanted = musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        if (wanted) {
+            while (true) {
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    try { if (music?.isPlaying != true) startMusic() } catch (e: Exception) { }
+                }
+                delay(2000)
+            }
+        }
+    }
+    // No status bar anywhere in the app — May asked for it gone
+    // altogether (it used to come back outside the room and stay).
+    // The navigation bar stays VISIBLE everywhere, though (reversed
+    // 2026-11-10 at May's request): with it hidden, her gestures
+    // needed a first swipe just to reveal the bars before back/home
+    // would work. With it shown, gestures land first try. The Razr's
+    // black bottom strip stays as it is — the room's raised bottom
+    // texts make it read as a frame there.
+    val activity = context as? Activity
+    LaunchedEffect(Unit) {
+        val act = activity ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+    LaunchedEffect(screen) {
+        val act = activity ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.show(WindowInsetsCompat.Type.navigationBars())
+    }
+    DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
+
+    // ----- Permission + library load -----
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        granted = ok
+        if (ok) {
+            pendingDest?.let { navTo(it) }
+            pendingDest = null
+        }
+    }
+    LaunchedEffect(granted) {
+        if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+    }
+    // Fresh scan on every entry (May, 2026-11-10): whenever she
+    // steps into a video screen — library, categories, search, the
+    // player itself — the list is re-read from the phone, so a video
+    // downloaded a minute ago is already there. (The music library
+    // already reloads its songs each time it opens.)
+    LaunchedEffect(screen, granted) {
+        if (granted && screen !is Screen.Room) {
+            videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+        }
+    }
+    fun go(dest: Screen, needsVideos: Boolean = true) {
+        if (needsVideos && !granted) {
+            pendingDest = dest
+            launcher.launch(videoPermission())
+        } else {
+            navTo(dest)
+        }
+    }
+
+    fun catOf(v: VideoItem): AssignCat {
+        val o = prefs.getString("cat_${v.id}", null)
+        return when (o) {
+            "MOVIE" -> AssignCat.MOVIE
+            "TV" -> AssignCat.TV
+            else -> heuristicCat(v)
+        }
+    }
+    fun isEntertainment(v: VideoItem): Boolean {
+        val o = prefs.getString("cat_${v.id}", null)
+        if (o == "MOVIE" || o == "TV") return true
+        return !isJunkClip(v)
+    }
+    fun isFav(v: VideoItem) = prefs.getBoolean("fav_${v.id}", false)
+    fun isWatched(v: VideoItem) = prefs.getBoolean("watched_${v.id}", false)
+    var libVersion by remember { mutableStateOf(0) }
+    fun toggleWatched(v: VideoItem) {
+        prefs.edit().putBoolean("watched_${v.id}", !isWatched(v)).apply()
+        libVersion++
+    }
+    fun savedPos(v: VideoItem) = prefs.getLong("pos_${v.id}", 0L)
+
+    // Shuffle asked for permission first: once the library actually
+    // arrives, finish the shuffle instead of leaving her in the room.
+    LaunchedEffect(videos, pendingShuffle) {
+        if (pendingShuffle && videos.isNotEmpty()) {
+            pendingShuffle = false
+            pauseMusic()
+            val pool = videos.filter { isEntertainment(it) }
+            val src = if (pool.isNotEmpty()) pool else videos
+            navTo(Screen.Player(src, src.indices.random(), "Shuffle"))
+        }
+    }
+
+    fun filtered(filter: Filter): List<VideoItem> = when (filter) {
+        Filter.ALL -> videos
+        Filter.MOVIES -> videos.filter { catOf(it) == AssignCat.MOVIE }
+        Filter.TV -> videos.filter { catOf(it) == AssignCat.TV }
+        Filter.FAVORITES -> videos.filter { isFav(it) }
+        Filter.UNSORTED -> videos.filter { catOf(it) == AssignCat.NONE && isEntertainment(it) }
+        Filter.RECENT -> videos.filter { isEntertainment(it) }.take(30)
+        Filter.CONTINUE -> videos.filter {
+            val p = savedPos(it); it.durationMs > 0 && p > 10_000 && p < it.durationMs * 95 / 100 && isEntertainment(it)
+        }
+    }
+
+    fun navigateBack() {
+        when {
+            showRadio -> showRadio = false
+            backStack.isNotEmpty() -> {
+                screen = backStack.last()
+                backStack = backStack.dropLast(1)
+            }
+            screen is Screen.MusicPlayer -> screen = Screen.MusicLibrary
+            else -> navTo(Screen.Room)
+        }
+    }
+    BackHandler(enabled = screen !is Screen.Room) { navigateBack() }
+
+    val libTick = libVersion
+    MaterialTheme(typography = cartoonTypography()) {
+    Box(Modifier.fillMaxSize().background(RoomDark)) {
+        if (screen !is Screen.Room && screen !is Screen.Player && screen !is Screen.MusicPlayer) {
+            RoomBackdrop()
+        }
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                (fadeIn(tween(240)) + scaleIn(initialScale = 0.985f, animationSpec = tween(240))) togetherWith
+                    fadeOut(tween(160))
+            },
+            label = "screen"
+        ) { s ->
+            when (s) {
+            is Screen.Room -> RoomScreen(
+                phase = phase,
+                onCyclePhase = {
+                    phaseOverride = when (phase) {
+                        DayPhase.DAWN -> DayPhase.DAY
+                        DayPhase.DAY -> DayPhase.DUSK
+                        DayPhase.DUSK -> DayPhase.NIGHT
+                        DayPhase.NIGHT -> DayPhase.DAWN
+                    }
+                },
+                musicOn = musicOn,
+                onToggleMusic = { musicOn = !musicOn },
+                onOpenRadio = { showRadio = true },
+                fxOn = fxOn,
+                onToggleFx = { fxOn = !fxOn },
+                doorsOpen = doorGone,
+                onHotspot = { dest -> go(dest, needsVideos = dest !is Screen.MusicLibrary) },
+                onShuffle = {
+                    pauseMusic()
+                    if (!granted) {
+                        pendingShuffle = true
+                        launcher.launch(videoPermission())
+                    } else if (videos.isNotEmpty()) {
+                        val pool = videos.filter { isEntertainment(it) }
+                        val src = if (pool.isNotEmpty()) pool else videos
+                        val pick = src.indices.random()
+                        navTo(Screen.Player(src, pick, "Shuffle"))
+                    }
+                }
+            )
+            is Screen.Categories -> CategoriesScreen(
+                counts = Filter.values().associateWith { filtered(it).size },
+                showsCount = detectShows(videos, ::catOf).size,
+                movieFolderCount = detectMovieFolders(videos, ::catOf).size,
+                onPick = { navTo(Screen.Library(it)) },
+                onShows = { navTo(Screen.Shows) },
+                onMovieFolders = { navTo(Screen.MovieFolders) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.Shows -> ShowsScreen(
+                shows = detectShows(videos, ::catOf),
+                isWatched = ::isWatched,
+                savedPos = ::savedPos,
+                onPick = { navTo(Screen.ShowDetail(it)) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.ShowDetail -> {
+                val show = detectShows(videos, ::catOf).firstOrNull { it.title == s.showTitle }
+                if (show != null) {
+                    ShowDetailScreen(
+                        show = show,
+                        isFav = ::isFav,
+                        isWatched = ::isWatched,
+                        savedPos = ::savedPos,
+                        onToggleWatched = ::toggleWatched,
+                        onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.showTitle)) },
+                        onRoom = { navTo(Screen.Room) },
+                        onBack = { navigateBack() }
+                    )
+                } else {
+                    ShowsScreen(
+                        shows = detectShows(videos, ::catOf),
+                        isWatched = ::isWatched,
+                        savedPos = ::savedPos,
+                        onPick = { navTo(Screen.ShowDetail(it)) },
+                        onRoom = { navTo(Screen.Room) },
+                        onBack = { navigateBack() }
+                    )
+                }
+            }
+            is Screen.MovieFolders -> MovieFoldersScreen(
+                folders = detectMovieFolders(videos, ::catOf),
+                onPick = { navTo(Screen.FolderDetail(it)) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.FolderDetail -> {
+                val folder = detectMovieFolders(videos, ::catOf).firstOrNull { it.key == s.key }
+                LibraryScreen(
+                    title = folder?.title ?: "Movies",
+                    items = folder?.items ?: emptyList(),
+                    prefs = prefs,
+                    catOf = ::catOf,
+                    isFav = ::isFav,
+                    savedPos = ::savedPos,
+                    onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies")) },
+                    onRoom = { navTo(Screen.Room) },
+                    onBack = { navigateBack() }
+                )
+            }
+            is Screen.Library -> LibraryScreen(
+                title = s.filter.label,
+                items = filtered(s.filter),
+                prefs = prefs,
+                catOf = ::catOf,
+                isFav = ::isFav,
+                savedPos = ::savedPos,
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label)) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() },
+                onStats = { navTo(Screen.Stats) }
+            )
+            is Screen.Search -> SearchScreen(
+                items = videos,
+                prefs = prefs,
+                catOf = ::catOf,
+                isFav = ::isFav,
+                savedPos = ::savedPos,
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, "Search")) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.Settings -> SettingsScreen(
+                videoCount = videos.size,
+                granted = granted,
+                onGrant = { launcher.launch(videoPermission()) },
+                onClearResume = {
+                    val ed = prefs.edit()
+                    videos.forEach { ed.remove("pos_${it.id}") }
+                    ed.apply()
+                },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.Stats -> StatsScreen(
+                videos = videos,
+                prefs = prefs,
+                isWatched = ::isWatched,
+                savedPos = ::savedPos,
+                showsCount = detectShows(videos, ::catOf).size,
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.MusicLibrary -> MusicLibraryScreen(
+                prefs = prefs,
+                onPlaySong = { q, idx -> playSongs(q, idx) },
+                onOpenPlayer = { navTo(Screen.MusicPlayer) },
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
+            is Screen.MusicPlayer -> MusicPlayerScreen(
+                prefs = prefs,
+                onBack = { navigateBack() },
+                onShrink = {
+                    showMusicMini = true
+                    navTo(Screen.Room)
+                }
+            )
+            is Screen.Player -> PlayerScreen(
+                queue = s.queue,
+                startIndex = s.startIndex,
+                fromLabel = s.fromLabel,
+                prefs = prefs,
+                onBack = { navigateBack() },
+                onShrink = { idx ->
+                    miniQueue = s.queue
+                    miniIndex = idx
+                    navTo(Screen.Room)
+                },
+                radioPause = radioActive || MusicState.playing
+            )
+            }
+        }
+        if (doorGone && screen !is Screen.Player) {
+            miniQueue?.let { q ->
+                MiniPlayerBox(
+                    queue = q,
+                    startIndex = miniIndex,
+                    prefs = prefs,
+                    onExpand = { idx ->
+                        miniQueue = null
+                        navTo(Screen.Player(q, idx, "Mini player"))
+                    },
+                    onClose = { miniQueue = null },
+                    radioPause = radioActive || MusicState.playing
+                )
+            }
+        }
+        if (screen is Screen.Room && showRadio) {
+            RadioPlayerBox(
+                playing = radioPlaying,
+                buffering = radioBuffering,
+                onToggle = { if (radioActive) stopRadio() else startRadio() },
+                onClose = { showRadio = false }
+            )
+        }
+        if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
+            MusicMiniBox(
+                onExpand = { navTo(Screen.MusicPlayer) },
+                onClose = { showMusicMini = false }
+            )
+        }
+        if (!doorGone) {
+            DoorIntro(onDone = { doorGone = true })
+            // The music button stays on top of the doors, so she can hush
+            // the song before she even steps into the room.
+            Column(
+                Modifier.align(Alignment.TopStart).padding(12.dp)
+                    .clickable { musicOn = !musicOn },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(38.dp).shadow(4.dp, CircleShape).clip(CircleShape)
+                        .background(Color(0xCC10131A))
+                        .border(1.8.dp, RoomYellow, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (musicOn) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
+                        if (musicOn) "Pause music" else "Play music",
+                        tint = if (musicOn) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (musicOn) "Music" else "Muted",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0x8810131A))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
+            // The effects button rides beside it on the doors too.
+            Column(
+                Modifier.align(Alignment.TopStart).padding(start = 64.dp, top = 12.dp)
+                    .clickable { fxOn = !fxOn },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(38.dp).shadow(4.dp, CircleShape).clip(CircleShape)
+                        .background(Color(0xCC10131A))
+                        .border(1.8.dp, RoomSky, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (fxOn) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        if (fxOn) "Turn effects off" else "Turn effects on",
+                        tint = if (fxOn) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (fxOn) "Effects" else "No FX",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0x8810131A))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
+        }
+    }
+    }
+}
+
+
+fun findDrawableId(context: Context, exact: String): Int {
+    val direct = context.resources.getIdentifier(exact, "drawable", context.packageName)
+    if (direct != 0) return direct
+    return try {
+        val cls = Class.forName(context.packageName + ".R\$drawable")
+        cls.fields.firstOrNull { it.name.endsWith(exact) }?.getInt(null) ?: 0
+    } catch (e: Exception) { 0 }
+}
+
+// The room's four times of day (May, 2026-11-10): dawn and dusk
+// join day and night, each with its own paintings on both screens.
+// Left alone, the room follows the real clock; the corner button
+// steps through all four by hand for the session.
+enum class DayPhase { DAWN, DAY, DUSK, NIGHT }
+
+fun phaseForClock(): DayPhase {
+    val h = java.time.LocalTime.now().hour
+    return when {
+        h in 5..6 -> DayPhase.DAWN
+        h in 7..18 -> DayPhase.DAY
+        h in 19..20 -> DayPhase.DUSK
+        else -> DayPhase.NIGHT
+    }
+}
+
+fun isNightNow(): Boolean = phaseForClock() == DayPhase.NIGHT
+
+// A safety net for the dawn/dusk art: if the uploaded file's name
+// holds the word (whatever else the phone wrapped around it), find
+// the drawable whose name carries it for this screen shape.
+fun findPhaseDrawableId(context: Context, keyword: String, tall: Boolean): Int {
+    return try {
+        val cls = Class.forName(context.packageName + ".R\$drawable")
+        cls.fields.firstOrNull { f ->
+            val n = f.name.lowercase()
+            n.contains(keyword) && (if (tall) n.contains("tall") else !n.contains("tall"))
+        }?.getInt(null) ?: 0
+    } catch (e: Exception) { 0 }
+}
+
+@Composable
+fun rememberRoomBitmap(tall: Boolean, phase: DayPhase): Bitmap? {
+    val context = LocalContext.current
+    return remember(tall, phase) {
+        try {
+            var bmp: Bitmap? = null
+            // Dawn and dusk get first try at their own paintings.
+            if (phase == DayPhase.DAWN || phase == DayPhase.DUSK) {
+                val kw = if (phase == DayPhase.DAWN) "dawn" else "dusk"
+                val pid = findDrawableId(context, if (tall) "arnolds_room_tall_$kw" else "arnolds_room_wide_$kw")
+                    .takeIf { it != 0 } ?: findPhaseDrawableId(context, kw, tall)
+                if (pid != 0) bmp = android.graphics.BitmapFactory.decodeResource(context.resources, pid)
+            }
+            if (bmp == null) {
+                // Until the dawn/dusk art is in the app, dawn borrows
+                // the day and dusk borrows the night.
+                val names = when {
+                    tall && (phase == DayPhase.NIGHT || phase == DayPhase.DUSK) -> listOf("arnolds_room_tall_night", "file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
+                    tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
+                    phase == DayPhase.NIGHT || phase == DayPhase.DUSK -> listOf("arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
+                    else -> listOf("file_00000000ed6081f586fc3d5ad2e02ce3", "arnolds_room_wide", "arnolds_room")
+                }
+                for (n in names) {
+                    val id = findDrawableId(context, n)
+                    if (id != 0) {
+                        bmp = android.graphics.BitmapFactory.decodeResource(context.resources, id)
+                        if (bmp != null) break
+                    }
+                }
+            }
+            bmp
+        } catch (e: Exception) { null }
+    }
+}
+
+// ---------- The Room (home) ----------
+data class Hotspot(
+    val fx: Float, val fy: Float, val label: String, val icon: ImageVector, val dest: Screen?,
+    val color: Color
+)
+
+fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
+    val side = (src.width * frac).toInt().coerceAtLeast(24)
+    val cx = (src.width * fx).toInt()
+    val cy = (src.height * fy).toInt()
+    val x = (cx - side / 2).coerceIn(0, (src.width - side).coerceAtLeast(0))
+    val y = (cy - side / 2).coerceIn(0, (src.height - side).coerceAtLeast(0))
+    val s2 = minOf(side, src.width - x, src.height - y)
+    return Bitmap.createBitmap(src, x, y, s2, s2)
+}
+
+// Each hotspot is drawn as an outline of the thing it stands for — a TV
+// outline over the TV, a bed over the bed, a door over the door — traced
+// twice: a dark halo so it reads on the busy painting, then the color.
+@Composable
+fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
+    // A living sky over the painting's own sky, drawn inside the
+    // painting's coordinate system so it tracks on any screen. The
+    // shapes come from the paintings themselves (pixel-measured
+    // 2026-11-10): the glass ceiling is a wide trapezoid spanning the
+    // whole top and narrowing downward, and the sun/moon sits in the
+    // upper-right panes — sun wide (0.793, 0.145), tall (0.776, 0.078);
+    // moon wide (0.802, 0.146), tall (0.774, 0.094).
+    val stars = remember(tall) {
+        // Spread evenly instead of purely at random (May,
+        // 2026-11-10): random scatter clumped stars together and
+        // dropped some into hidden corners of the glass. The
+        // trapezoid is cut into a grid of cells — one star per cell,
+        // jittered inside it — so the whole skylight is covered, the
+        // edges are respected, and the moon stays clear.
+        val rnd = kotlin.random.Random(if (tall) 7 else 42)
+        val cols = if (tall) 6 else 7
+        val rowsN = 4
+        val yTop = if (tall) 0.005f else 0.010f
+        val yBot = if (tall) 0.235f else 0.270f
+        val halfTop = if (tall) 0.45f else 0.46f
+        val halfBot = if (tall) 0.19f else 0.28f
+        val moonX = if (tall) 0.774f else 0.802f
+        val moonY = if (tall) 0.094f else 0.146f
+        val moonR = if (tall) 0.068f else 0.062f
+        val out = mutableListOf<Triple<Float, Float, Float>>()
+        for (r in 0 until rowsN) {
+            val bandTop = yTop + (yBot - yTop) * r / rowsN
+            val bandBot = yTop + (yBot - yTop) * (r + 1) / rowsN
+            for (c in 0 until cols) {
+                var placed: Triple<Float, Float, Float>? = null
+                var tries = 0
+                while (placed == null && tries < 8) {
+                    tries++
+                    val fy = bandTop + (0.25f + 0.5f * rnd.nextFloat()) * (bandBot - bandTop)
+                    val half = (halfTop + (halfBot - halfTop) * ((fy - yTop) / (yBot - yTop))) * 0.92f
+                    val cellW = 2f * half / cols
+                    val fx = 0.5f - half + cellW * (c + 0.25f + 0.5f * rnd.nextFloat())
+                    if (kotlin.math.hypot((fx - moonX).toDouble(), (fy - moonY).toDouble()) < moonR) continue
+                    placed = Triple(fx, fy, rnd.nextFloat())
+                }
+                placed?.let { out.add(it) }
+            }
+        }
+        out
+    }
+    Canvas(Modifier.fillMaxSize()) {
+        val scaleF = (size.width / 900f).coerceIn(0.7f, 1.6f)
+        if (night) {
+            stars.forEach { (fx, fy, seed) ->
+                val phase = (t + seed) % 1f
+                val tw = kotlin.math.sin(phase * 2f * Math.PI.toFloat()).coerceAtLeast(0f)
+                val a = 0.10f + 0.90f * tw * tw
+                val cx = fx * size.width
+                val cy = fy * size.height
+                val r = (2.4f + 3.6f * seed) * (0.7f + 0.5f * tw) * scaleF
+                val col = Color(0xFFFFF8E1).copy(alpha = a)
+                drawCircle(col, radius = r * 0.32f, center = Offset(cx, cy))
+                drawLine(col, Offset(cx - r, cy), Offset(cx + r, cy), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
+                drawLine(col, Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
+            }
+        } else {
+            val sunFx = if (tall) 0.776f else 0.793f
+            val sunFy = if (tall) 0.078f else 0.145f
+            val cx = sunFx * size.width
+            val cy = sunFy * size.height
+            val breathe = 0.5f + 0.5f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
+            // The warm halo, breathing visibly this time. Drawn with
+            // BlendMode.Plus: plain alpha cream washed out completely
+            // over the already-bright painted sun (May: 'no lens flare'
+            // even when it was centered right) — adding light is what
+            // makes a flare read as a flare.
+            // The wide (inner Fold screen) flare runs gentler than the
+            // tall one — at the size the big screen shows it, the tall
+            // dose was overwhelming (May, 2026-11-10).
+            val radius = size.width * (if (tall) 0.19f else 0.17f) * (0.92f + 0.16f * breathe)
+            drawCircle(
+                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(
+                        Color(0xFFFFF9C4).copy(alpha = (if (tall) 0.11f else 0.07f) + (if (tall) 0.06f else 0.04f) * breathe),
+                        Color.Transparent
+                    ),
+                    center = Offset(cx, cy),
+                    radius = radius
+                ),
+                radius = radius,
+                center = Offset(cx, cy),
+                blendMode = androidx.compose.ui.graphics.BlendMode.Plus
+            )
+            // Six rays reaching past the painted sunburst, swaying
+            // gently and stretching with the breath — the visible
+            // motion. Long and additive now, so they can be seen
+            // against the burst instead of hiding inside it.
+            val sway = 10f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
+            val rayLen = size.width * 0.12f * (0.90f + 0.25f * breathe)
+            val rayCol = Color(0xFFFFF59D).copy(alpha = if (tall) 0.16f else 0.10f)
+            for (k in 0..5) {
+                val ang = Math.toRadians((sway + k * 30f).toDouble())
+                val dx = kotlin.math.cos(ang).toFloat()
+                val dy = kotlin.math.sin(ang).toFloat()
+                drawLine(
+                    rayCol,
+                    Offset(cx - dx * rayLen * 0.35f, cy - dy * rayLen * 0.35f),
+                    Offset(cx + dx * rayLen, cy + dy * rayLen),
+                    strokeWidth = 4.5f * scaleF,
+                    cap = StrokeCap.Round,
+                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus
+                )
+            }
+            // Lens ghosts on the sun-through-center line, drifting a
+            // breath along it: wide sun throws them lower-left, tall
+            // sun throws them nearly straight down.
+            val dirX = 0.5f - sunFx
+            val dirY = 0.5f - sunFy
+            listOf(
+                Triple(0.62f, if (tall) 0.08f else 0.05f, 30f),
+                Triple(1.05f, if (tall) 0.055f else 0.035f, 18f)
+            ).forEach { (k, alpha, rad) ->
+                val drift = (breathe - 0.5f) * 0.012f
+                drawCircle(
+                    Color(0xFFB3E5FC).copy(alpha = alpha + 0.02f * breathe),
+                    radius = rad * scaleF,
+                    center = Offset(
+                        (sunFx + dirX * (1f + k) + drift) * size.width,
+                        (sunFy + dirY * (1f + k) + drift) * size.height
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, pulse: Float, onTap: () -> Unit) {
+    // The chip is a clear ring on the painting itself (May, 2026-11-10):
+    // the circle's inside is transparent, so what you see in it is the
+    // room behind it — no crop to drift off its thing, ever. Around it,
+    // just enough dressing to lift it off the wall: a soft glow in the
+    // spot's own color, a drop shadow, and a two-tone rim (a dark ink
+    // ring outside, the spot's color inside). The glow breathes with
+    // the room's pulse until she taps something. (The art/imgWpx params
+    // are vestigial from the crop era; the corner toggles still crop.)
+    val chipDp = if (compact) 52.dp else 68.dp
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(index * 70L); shown = true }
+    val scale = animateFloatAsState(
+        if (shown) 1f else 0.3f,
+        spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
+    )
+    val color = if (tapped) RoomYellow else spot.color
+    // The Plaza ring's pink reads hotter than the other colors at the
+    // same alpha — its glow is dimmed a touch so all the rings pulse
+    // at the same felt strength (May, 2026-11-10).
+    val glowAlpha = (0.16f + 0.30f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(chipDp)
+                .scale(if (tapped) scale.value * 1.18f else scale.value)
+                .alpha(if (shown) 1f else 0f),
+            contentAlignment = Alignment.Center
+        ) {
+            // The halo: the spot's color, breathed out around the circle.
+            // Drawn at its true size, not scaled up from a smaller box —
+            // scaling a clipped circle up rendered its edge as a faceted
+            // little octagon inside the ring (May, 2026-11-10). The
+            // three-stop gradient softens the falloff further.
+            Box(
+                Modifier
+                    .size(chipDp * 1.5f)
+                    .clip(CircleShape)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.radialGradient(
+                            listOf(
+                                color.copy(alpha = glowAlpha),
+                                color.copy(alpha = glowAlpha * 0.45f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+            // The circle itself: shadow first so it floats, then the two
+            // rings — dark ink outside, the spot's color inside — and
+            // nothing inside them: the painting shows straight through.
+            Box(
+                Modifier
+                    .size(chipDp)
+                    .shadow(7.dp, CircleShape)
+                    .clip(CircleShape)
+                    .border(2.5.dp, Color(0xFF10131A), CircleShape)
+                    .clickable { onTap() },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier
+                        .size(chipDp - 5.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, color, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                }
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            spot.label,
+            color = Color(0xFF10131A),
+            fontSize = if (compact) 13.sp else 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background((if (tapped) RoomYellow else color).copy(alpha = 0.95f))
+                .padding(horizontal = if (compact) 6.dp else 5.dp, vertical = if (compact) 1.dp else 0.dp)
+        )
+    }
+}
+// thump plus a woody click that both die away in about a tenth of a second.
+// The city outside the window (May, 2026-11-10): no audio
 // files — the street is generated live. First version sounded
 // like ocean surf (a slow swell on brown noise), so this one is
 // built from the actual ingredients: a STEADY traffic rumble
@@ -864,6 +1720,131 @@ private class CityAmbiencePlayer {
     }
 }
 
+
+fun buildKnockTrack(): AudioTrack {
+    val sampleRate = 44100
+    val frames = (sampleRate * 0.11).toInt()
+    val pcm = ShortArray(frames)
+    val rnd = kotlin.random.Random(7)
+    for (i in 0 until frames) {
+        val t = i / sampleRate.toDouble()
+        val thump = kotlin.math.sin(2.0 * Math.PI * 155.0 * t) * kotlin.math.exp(-t * 48.0)
+        val click = (rnd.nextDouble() * 2.0 - 1.0) * kotlin.math.exp(-t * 160.0)
+        val v = (thump * 0.75 + click * 0.30).coerceIn(-1.0, 1.0)
+        pcm[i] = (v * Short.MAX_VALUE).toInt().toShort()
+    }
+    val track = AudioTrack.Builder()
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        )
+        .setAudioFormat(
+            AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build()
+        )
+        .setBufferSizeInBytes(pcm.size * 2)
+        .setTransferMode(AudioTrack.MODE_STATIC)
+        .build()
+    track.write(pcm, 0, pcm.size)
+    return track
+}
+
+@Composable
+fun DoorIntro(onDone: () -> Unit) {
+    val slide = remember { Animatable(0f) }
+    val nudge = remember { Animatable(0f) }
+    var knocks by remember { mutableStateOf(0) }
+    var opening by remember { mutableStateOf(false) }
+    val knockTrack = remember { buildKnockTrack() }
+    DisposableEffect(Unit) { onDispose { knockTrack.release() } }
+    fun knock() {
+        try {
+            if (knockTrack.playState == AudioTrack.PLAYSTATE_PLAYING) knockTrack.stop()
+            knockTrack.reloadStaticData()
+            knockTrack.play()
+        } catch (e: Exception) {
+            // No knock sound on this device; the doors still work.
+        }
+    }
+    LaunchedEffect(knocks) {
+        if (knocks == 1) {
+            nudge.animateTo(7f, tween(70))
+            nudge.animateTo(-4f, tween(70))
+            nudge.animateTo(0f, tween(80))
+        }
+    }
+    LaunchedEffect(opening) {
+        if (opening) {
+            slide.animateTo(1f, tween(950, easing = FastOutSlowInEasing))
+            onDone()
+        }
+    }
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures(onTap = {
+                if (!opening) {
+                    knock()
+                    knocks++
+                    if (knocks >= 2) opening = true
+                }
+            })
+        }
+    ) {
+        Row(Modifier.fillMaxSize()) {
+            DoorPanel(knobOnRight = true, toLeft = true, progress = slide.value, nudgePx = nudge.value)
+            DoorPanel(knobOnRight = false, toLeft = false, progress = slide.value, nudgePx = nudge.value)
+        }
+        Text(
+            "knock twice to come in",
+            fontFamily = HandwrittenFont,
+            color = Color(0xFFFFF3E0).copy(alpha = 0.85f),
+            fontSize = 17.sp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp)
+        )
+    }
+}
+
+@Composable
+fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, nudgePx: Float = 0f) {
+    Box(
+        Modifier.fillMaxHeight().weight(1f)
+            .graphicsLayer {
+                translationX = (if (toLeft) -1f else 1f) * progress * this.size.width +
+                    (if (toLeft) nudgePx else -nudgePx)
+            }
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFF4A6FA5), Color(0xFF2F4E79))
+                )
+            )
+            .border(2.dp, Color(0xFF22364F))
+    ) {
+        Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f).padding(6.dp)
+                    .border(3.dp, Color(0xFF22364F)).background(Color(0xFF557DB2))
+            )
+            Box(
+                Modifier.fillMaxWidth().weight(1f).padding(6.dp)
+                    .border(3.dp, Color(0xFF22364F)).background(Color(0xFF557DB2))
+            )
+        }
+        Box(
+            Modifier
+                .align(if (knobOnRight) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = 10.dp)
+                .size(15.dp).shadow(3.dp, CircleShape).clip(CircleShape)
+                .background(Color(0xFFFFC93C))
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
     val spots = listOf(
@@ -4002,7 +4983,7 @@ fun MusicMiniBox(
             ) {
                 Text("MUSIC · SIDE A", color = MusicAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-Icon(
+                Icon(
                     Icons.Filled.OpenInFull, "Resize player", tint = MusicAccent,
                     modifier = Modifier.size(19.dp).pointerInput(Unit) {
                         launch {
@@ -4022,7 +5003,7 @@ Icon(
                             }
                         }
                     }
-                    )
+                )
                     Spacer(Modifier.width(10.dp))
                 Icon(
                     Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
