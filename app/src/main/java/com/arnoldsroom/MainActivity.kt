@@ -2674,6 +2674,27 @@ fun RadioPlayerBox(
                         color = if (playing) Color(0xFFFF8A80) else Color(0xFF8E7CC3),
                         fontSize = 9.5.sp, fontWeight = FontWeight.Bold
                     )
+Icon(
+                        Icons.Filled.OpenInFull, "Resize player", tint = Color(0xFFFF6EC7),
+                        modifier = Modifier.size(19.dp).pointerInput(Unit) {
+                            launch {
+                                detectTapGestures {
+                                    widthDpF = when {
+                                        widthDpF < 200f -> 240f
+                                        widthDpF < 280f -> 320f
+                                        widthDpF < 380f -> 420f
+                                        else -> 180f
+                                    }
+                                }
+                            }
+                            launch {
+                                detectDragGestures { change, drag ->
+                                    change.consume()
+                                    widthDpF = (widthDpF + drag.x / density).coerceIn(150f, 480f)
+                                }
+                            }
+                        }
+                    )
                     Spacer(Modifier.width(8.dp))
                     Icon(
                         Icons.Filled.Close, "Close radio player", tint = Color(0xFFB39DDB),
@@ -3981,6 +4002,28 @@ fun MusicMiniBox(
             ) {
                 Text("MUSIC · SIDE A", color = MusicAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
+Icon(
+                    Icons.Filled.OpenInFull, "Resize player", tint = MusicAccent,
+                    modifier = Modifier.size(19.dp).pointerInput(Unit) {
+                        launch {
+                            detectTapGestures {
+                                widthDpF = when {
+                                    widthDpF < 200f -> 240f
+                                    widthDpF < 280f -> 320f
+                                    widthDpF < 380f -> 420f
+                                    else -> 180f
+                                }
+                            }
+                        }
+                        launch {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                widthDpF = (widthDpF + drag.x / density).coerceIn(150f, 480f)
+                            }
+                        }
+                    }
+                    )
+                    Spacer(Modifier.width(10.dp))
                 Icon(
                     Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
                     modifier = Modifier.size(18.dp).clickable { onClose() }
