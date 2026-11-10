@@ -3479,6 +3479,7 @@ private fun NewPlaylistDialog(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SongRow(
     s: SongItem,
