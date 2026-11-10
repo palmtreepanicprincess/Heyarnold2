@@ -596,45 +596,36 @@ fun ArnoldsRoomApp() {
     // stream in a draggable pop-up, opened from a ring in the room.
     // Playing it takes over the room's sound: the room song pauses,
     // and any video — full player or mini pop-up — pauses too (the
-    // players watch radioActive and pause themselves).
-    var radioPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var radioPlaying by remember { mutableStateOf(false) }
-    var radioBuffering by remember { mutableStateOf(false) }
+    // players watch radioActive and pause themselves). The stream
+    // itself lives in RadioService, a foreground service, so it keeps
+    // playing when she leaves the app; these just read its state and
+    // send it play/stop orders.
     var showRadio by remember { mutableStateOf(false) }
+    val radioPlaying = RadioState.playing
+    val radioBuffering = RadioState.buffering
     val radioActive = radioPlaying || radioBuffering
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun stopRadio() {
-        try { radioPlayer?.stop() } catch (e: Exception) { }
-        try { radioPlayer?.release() } catch (e: Exception) { }
-        radioPlayer = null
-        radioPlaying = false
-        radioBuffering = false
-        // Hand the room its song back, if it wants it.
-        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone) startMusic()
+        try {
+            context.startService(Intent(context, RadioService::class.java).setAction(RadioService.ACTION_STOP))
+        } catch (e: Exception) { }
+        // The room song restarts by itself via the music effect once
+        // the service reports the stream has stopped.
     }
     fun startRadio() {
         pauseMusic()
-        radioBuffering = true
-        try {
-            val mp = MediaPlayer()
-            mp.setAudioAttributes(
-                android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            mp.setDataSource("https://radio.plaza.one/mp3")
-            mp.setOnPreparedListener { p ->
-                radioBuffering = false
-                try { p.start(); radioPlaying = true } catch (e: Exception) { }
-            }
-            mp.setOnErrorListener { _, _, _ -> stopRadio(); true }
-            radioPlayer = mp
-            mp.prepareAsync()
-        } catch (e: Exception) {
-            radioBuffering = false
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            try { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (e: Exception) { }
         }
+        try {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, RadioService::class.java).setAction(RadioService.ACTION_PLAY)
+            )
+        } catch (e: Exception) { }
     }
-    DisposableEffect(Unit) { onDispose { try { radioPlayer?.release() } catch (e: Exception) { } } }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
