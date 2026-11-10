@@ -1889,7 +1889,13 @@ fun PlayerScreen(
                             Icon(Icons.Filled.Bedtime, "Sleep timer", tint = if (sleepChoice > 0) RoomYellow else Color.White, modifier = Modifier.size(19.dp))
                             if (sleepChoice > 0) Text(" ${(sleepLeftMs / 60000) + 1}m", color = RoomYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
-                        IconButton(onClick = { onShrink(index) }) {
+                        IconButton(onClick = {
+                            // Save the exact spot first, so the mini player
+                            // continues right here instead of at the last
+                            // periodic save (or the beginning).
+                            savePos(exo.currentMediaItemIndex, exo.currentPosition)
+                            onShrink(exo.currentMediaItemIndex)
+                        }) {
                             Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
                         }
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
