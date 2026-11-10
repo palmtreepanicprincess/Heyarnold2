@@ -721,7 +721,6 @@ fun ArnoldsRoomApp() {
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
-    var city by remember { mutableStateOf<CityAmbiencePlayer?>(null) }
     fun startMusic() {
         try {
             if (music == null) {
@@ -736,20 +735,6 @@ fun ArnoldsRoomApp() {
     fun pauseMusic() {
         try { music?.let { if (it.isPlaying) it.pause() } } catch (e: Exception) { }
     }
-    // The city outside the window answers to the FX button now,
-    // not the music button (May, 2026-11-10): the star that governs
-    // the twinkling stars and the sun glare governs the street
-    // sounds too — all the room's living effects on one switch.
-    // It keeps the song's room-presence rules (present in the room
-    // and the lists, silent while anything plays or the app is
-    // away); only the switch changed.
-    fun startCity() {
-        try { if (city == null) city = CityAmbiencePlayer(); city?.start() } catch (e: Exception) { }
-    }
-    fun stopCity() {
-        try { city?.stop() } catch (e: Exception) { }
-    }
-
     // ----- Nightwave Plaza radio (May, 2026-11-10): a live vaporwave
     // stream in a draggable pop-up, opened from a ring in the room.
     // Playing it takes over the room's sound: the room song pauses,
@@ -842,21 +827,13 @@ fun ArnoldsRoomApp() {
             when (event) {
                 Lifecycle.Event.ON_START -> {
                     if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
-                    if (miniQueue == null && fxOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startCity()
                 }
-                Lifecycle.Event.ON_STOP -> { pauseMusic(); stopCity() }
+                Lifecycle.Event.ON_STOP -> { pauseMusic() }
                 else -> { }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(screen, fxOn, miniQueue, doorGone, radioActive, MusicState.playing) {
-        if (fxOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
-            screen !is Screen.Player && screen !is Screen.MusicPlayer
-        ) {
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startCity()
-        } else stopCity()
     }
     LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
         // The room song is the app's ambience (May, 2026-11-10): it
@@ -1592,144 +1569,6 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     }
 }
 // thump plus a woody click that both die away in about a tenth of a second.
-// The city outside the window (May, 2026-11-10): no audio
-// files — the street is generated live. First version sounded
-// like ocean surf (a slow swell on brown noise), so this one is
-// built from the actual ingredients: a STEADY traffic rumble
-// (no breathing), cars that pass with a rising-then-falling
-// filter sweep, a worksite somewhere off in the distance
-// (clusters of dull clanks and thuds), and people talking
-// across the street — syllable-shaped murmur in the speech
-// band, too far away to make out words. Still no sirens.
-private class CityAmbiencePlayer {
-    @Volatile private var running = false
-    private var thread: Thread? = null
-    private var track: AudioTrack? = null
-
-    fun start() {
-        if (running) return
-        running = true
-        thread = Thread {
-            val rate = 22050
-            val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
-            // Guarded exactly the way the first (working) version
-            // was: an unguarded build() here crashed the whole app
-            // at room entry on May's phone (2026-11-10) — the new
-            // class had also shrunk the buffer to a size that was
-            // not frame-aligned. rate * 2 bytes, and any failure
-            // just means no city, never a crash.
-            val t = try {
-                AudioTrack.Builder()
-                    .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                    .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(maxOf(minBuf, rate * 2))
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build()
-            } catch (e: Exception) { null }
-            if (t == null) { running = false; return@Thread }
-            track = t
-            try { t.play() } catch (e: Exception) { running = false; return@Thread }
-            val rnd = java.util.Random(4242)
-            val chunk = FloatArray(1024)
-            var brown = 0f
-            var hissLp = 0f
-            var fade = 0f
-            var carAt = -1f; var carLen = 3f; var carLp = 0f; var carHp = 0f; var truck = false
-            var nextCar = 2.0
-            var clankAt = -1; var clankT = 0.0; var clankF = 1900f; var thudT = 0.0
-            var nextWorks = 9.0; var clanksLeft = 0; var clankGap = 0f
-            var nextPhrase = 5.0; var sylLeft = 0; var sylT = 0f; var sylLen = 0.12f; var sylGap = 0f; var voiceLp = 0f; var voiceBp = 0f
-            var time = 0.0
-            while (running) {
-                for (i in chunk.indices) {
-                    val dt = 1.0 / rate
-                    time += dt
-                    if (fade < 1f) fade = minOf(1f, fade + (dt / 1.5).toFloat())
-                    val white = (rnd.nextFloat() * 2f - 1f)
-                    brown = (brown + 0.02f * white) / 1.02f
-                    hissLp += 0.03f * (white - hissLp)
-                    var out = brown * 1.5f + hissLp * 0.05f
-                    nextCar -= dt
-                    if (nextCar <= 0.0 && carAt < 0f) {
-                        carAt = 0f
-                        truck = rnd.nextFloat() < 0.18f
-                        carLen = if (truck) 5.5f + rnd.nextFloat() * 2f else 2.4f + rnd.nextFloat() * 1.6f
-                        nextCar = 4.0 + rnd.nextDouble() * 8.0
-                    }
-                    if (carAt >= 0f) {
-                        carAt += (dt / carLen).toFloat()
-                        if (carAt >= 1f) carAt = -1f else {
-                            val tri = 1f - kotlin.math.abs(carAt * 2f - 1f)
-                            val sweep = if (truck) 0.010f + 0.020f * tri else 0.016f + 0.05f * tri
-                            carLp += sweep * (white - carLp)
-                            val engine = carLp * (if (truck) 3.4f else 2.4f) * (0.25f + 0.75f * tri)
-                            carHp += 0.35f * (white - carHp)
-                            val tires = (white - carHp) * 0.10f * tri * tri
-                            out += (engine + tires) * 0.5f
-                        }
-                    }
-                    nextWorks -= dt
-                    if (nextWorks <= 0.0 && clanksLeft == 0) {
-                        clanksLeft = 2 + rnd.nextInt(4)
-                        clankGap = 0f
-                        nextWorks = 13.0 + rnd.nextDouble() * 22.0
-                        if (rnd.nextFloat() < 0.4f) thudT = 0.35
-                    }
-                    if (clanksLeft > 0) {
-                        clankGap -= dt.toFloat()
-                        if (clankGap <= 0f && clankAt < 0) {
-                            clankAt = 0; clankT = 0.0; clankF = 1500f + rnd.nextFloat() * 1100f
-                            clanksLeft--; clankGap = 0.16f + rnd.nextFloat() * 0.5f
-                        }
-                    }
-                    if (clankAt >= 0) {
-                        clankT += dt
-                        val env = kotlin.math.exp(-clankT * 26.0)
-                        out += (kotlin.math.sin(2.0 * Math.PI * clankF.toDouble() * clankT) * 0.055 * env).toFloat()
-                        if (clankT > 0.25) clankAt = -1
-                    }
-                    if (thudT > 0.0) {
-                        thudT -= dt
-                        val tt = 0.35 - thudT
-                        out += (kotlin.math.sin(2.0 * Math.PI * 74.0 * tt) * 0.10 * kotlin.math.exp(-tt * 11.0)).toFloat()
-                    }
-                    nextPhrase -= dt
-                    if (nextPhrase <= 0.0 && sylLeft == 0) {
-                        sylLeft = 3 + rnd.nextInt(5)
-                        sylGap = 0f
-                        nextPhrase = 6.0 + rnd.nextDouble() * 11.0
-                    }
-                    if (sylLeft > 0) {
-                        sylGap -= dt.toFloat()
-                        if (sylGap <= 0f && sylT <= 0f) { sylT = 0.07f + rnd.nextFloat() * 0.12f; sylLen = sylT; sylLeft-- }
-                    }
-                    if (sylT > 0f) {
-                        sylT -= dt.toFloat()
-                        voiceLp += 0.16f * (white - voiceLp)
-                        voiceBp += 0.05f * (voiceLp - voiceBp)
-                        val shape = (1f - sylT / sylLen).coerceIn(0f, 1f)
-                        out += (voiceLp - voiceBp) * 0.55f * kotlin.math.sin(Math.PI * shape.toDouble()).toFloat()
-                        if (sylT <= 0f) sylGap = 0.05f + rnd.nextFloat() * 0.16f
-                    }
-                    chunk[i] = (out * 0.5f * fade).coerceIn(-0.9f, 0.9f)
-                }
-                if (track !== t) break
-                t.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
-            }
-            try { t.stop() } catch (e: Exception) { }
-            t.release()
-        }
-        thread!!.start()
-    }
-
-    fun stop() {
-        running = false
-        track = null
-        try { thread?.join(600) } catch (e: Exception) { }
-        thread = null
-    }
-}
-
 
 fun buildKnockTrack(): AudioTrack {
     val sampleRate = 44100
@@ -3025,7 +2864,7 @@ fun SettingsScreen(
                     "• Remote on the rug — shuffle a random video\n" +
                     "• Joystick on the rug — your music: songs, albums, artists, favorites, and playlists you make yourself\n" +
                     "• Door — settings (you're here)\n\n" +
-                    "How the sound works: the room song is the app's ambience, and underneath it you can hear the street outside the window — cars rolling past, people talking across the street, a worksite clanking somewhere off in the distance. The music button in the room hushes the song; the city answers to the star (FX) button instead — one switch for all the room's living effects: the stars, the sun glare, and the street sounds. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
+                    "How the sound works: the room song is the app's ambience. The music button in the room hushes it. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
                     "Every list wears a strip of the room's painting at the top, in the same day or night as the room. The button in the room's top corner steps through dawn, day, dusk, and night — tap it to live in whichever light you like; left alone, the room follows the real clock. The star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
                     "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
