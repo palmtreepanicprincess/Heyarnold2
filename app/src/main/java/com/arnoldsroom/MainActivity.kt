@@ -601,12 +601,12 @@ fun ArnoldsRoomApp() {
     }
     // No status bar anywhere in the app — May asked for it gone
     // altogether (it used to come back outside the room and stay).
-    // And on the room screen itself, the navigation bar hides too:
-    // her Razr kept a black band exactly one gesture-bar tall at the
-    // bottom (measured from her screenshot: ~1.9% of the screen),
-    // because the system held that strip back for the navigation area
-    // even edge-to-edge. Hiding the bar on the room releases the strip
-    // to the painting. A swipe from an edge can still peek the bars.
+    // The navigation bar stays VISIBLE everywhere, though (reversed
+    // 2026-11-10 at May's request): with it hidden, her gestures
+    // needed a first swipe just to reveal the bars before back/home
+    // would work. With it shown, gestures land first try. The Razr's
+    // black bottom strip stays as it is — the room's raised bottom
+    // texts make it read as a frame there.
     val activity = context as? Activity
     LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
@@ -616,18 +616,8 @@ fun ArnoldsRoomApp() {
     LaunchedEffect(screen) {
         val act = activity ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
-        if (screen is Screen.Room) {
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            // Some phones (her Razr) still hold the bottom gesture strip
-            // back even with the bars hidden — a measured ~2% black band.
-            // FLAG_LAYOUT_NO_LIMITS sizes the window to the full display
-            // regardless, so the painting can truly reach the bottom.
-            act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-        } else {
-            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            controller.show(WindowInsetsCompat.Type.navigationBars())
-        }
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.show(WindowInsetsCompat.Type.navigationBars())
     }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
@@ -2452,13 +2442,11 @@ fun PlayerScreen(
             act.requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
-            if (on) {
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-            } else {
-                // The player stays immersive either way; the bars stay
-                // gone app-wide (status everywhere, nav in room/player).
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-            }
+            // Gestures first-swipe even mid-video (May, 2026-11-10):
+            // only the status bar hides; the nav bar stays up so
+            // back/home gestures work without a reveal swipe first.
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.show(WindowInsetsCompat.Type.navigationBars())
         }
     }
     DisposableEffect(Unit) {
