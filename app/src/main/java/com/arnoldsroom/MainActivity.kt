@@ -680,10 +680,11 @@ fun ArnoldsRoomApp() {
             try { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (e: Exception) { }
         }
         MusicState.queue = queue
-        val startPos = if (queue.isNotEmpty()) prefs.getLong("music_pos_${queue[index].id}", 0L) else 0L
+        // Songs always start from the beginning when she picks one —
+        // no resume memory (her call, 2026-11-10).
         musicAction(context, MusicService.ACTION_PLAY_QUEUE) {
             putExtra(MusicService.EXTRA_INDEX, index)
-            putExtra(MusicService.EXTRA_POS, startPos)
+            putExtra(MusicService.EXTRA_POS, 0L)
         }
         showMusicMini = true
         screen = Screen.MusicPlayer
@@ -3490,7 +3491,6 @@ private fun SongRow(
     onRemove: (() -> Unit)? = null
 ) {
     val fav = prefs.getBoolean("music_fav_${s.id}", false)
-    val saved = prefs.getLong("music_pos_${s.id}", 0L)
     val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
     Row(
         Modifier.fillMaxWidth()
@@ -3518,9 +3518,7 @@ private fun SongRow(
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             Text(
-                "${s.artist} • ${fmtDur(s.durationMs)}" +
-                    if (saved > 10_000 && s.durationMs > 0 && saved < s.durationMs * 95 / 100)
-                        " • left off at ${fmtDur(saved)}" else "",
+                "${s.artist} • ${fmtDur(s.durationMs)}",
                 color = RoomTextDim, fontSize = 12.5.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )

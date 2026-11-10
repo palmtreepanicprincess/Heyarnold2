@@ -93,16 +93,8 @@ class MusicService : Service() {
     private fun prefs() = getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
 
     private fun savePos() {
-        val p = player ?: return
-        val song = MusicState.current ?: return
-        try {
-            val pos = p.currentPosition
-            val dur = p.duration
-            val ed = prefs().edit()
-            if (dur > 0 && (dur - pos) < 5000) ed.remove("music_pos_${song.id}")
-            else ed.putLong("music_pos_${song.id}", pos)
-            ed.apply()
-        } catch (e: Exception) { }
+        // No position memory for songs anymore (her call, 2026-11-10):
+        // picking a song starts it from the beginning.
     }
 
     private val ticker = object : Runnable {
@@ -219,20 +211,6 @@ class MusicService : Service() {
         p.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val cur = player ?: return
-                // The song changed: bank the old song's place, then
-                // line up the new one's state.
-                if (lastSongId != -1L && MusicState.queue.isNotEmpty()) {
-                    try {
-                        val prev = MusicState.queue.firstOrNull { it.id == lastSongId }
-                        if (prev != null) {
-                            val pos = MusicState.positionMs
-                            val ed = prefs().edit()
-                            if (prev.durationMs > 0 && (prev.durationMs - pos) < 5000) ed.remove("music_pos_${prev.id}")
-                            else ed.putLong("music_pos_${prev.id}", pos)
-                            ed.apply()
-                        }
-                    } catch (e: Exception) { }
-                }
                 MusicState.index = cur.currentMediaItemIndex
                 MusicState.positionMs = 0L
                 MusicState.current?.let {
