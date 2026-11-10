@@ -450,9 +450,22 @@ class ContinueWidget : AppWidgetProvider() {
         val prefs = context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
         val title = prefs.getString("last_title", null) ?: "Nothing yet — watch something first"
         val lastId = prefs.getLong("last_id", -1L)
+        val lastPos = prefs.getLong("last_pos", 0L)
+        val lastDur = prefs.getLong("last_dur", 0L)
         for (id in ids) {
             val views = RemoteViews(context.packageName, R.layout.widget_continue)
             views.setTextViewText(R.id.widget_title, title)
+            if (lastDur > 0L && lastPos > 0L) {
+                views.setViewVisibility(R.id.widget_progress, android.view.View.VISIBLE)
+                views.setProgressBar(
+                    R.id.widget_progress, 1000,
+                    (lastPos * 1000L / lastDur).toInt().coerceIn(0, 1000), false
+                )
+                views.setTextViewText(R.id.widget_left, "Left off at ${fmtDur(lastPos)} — tap to jump back in!")
+            } else {
+                views.setViewVisibility(R.id.widget_progress, android.view.View.GONE)
+                views.setTextViewText(R.id.widget_left, "Tap to step into the room")
+            }
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("continue_video_id", lastId)
@@ -2049,6 +2062,8 @@ fun PlayerScreen(
             if (pos >= 1000L) {
                 ed.putLong("last_id", v.id)
                 ed.putString("last_title", v.title)
+                ed.putLong("last_pos", pos)
+                ed.putLong("last_dur", v.durationMs)
             }
             ed.apply()
         }
@@ -2427,6 +2442,8 @@ fun MiniPlayerBox(
         if (pos >= 1000L) {
             ed.putLong("last_id", v.id)
             ed.putString("last_title", v.title)
+            ed.putLong("last_pos", pos)
+            ed.putLong("last_dur", v.durationMs)
         }
         ed.apply()
     }
