@@ -970,7 +970,7 @@ fun ArnoldsRoomApp() {
             pauseMusic()
             val pool = videos.filter { isEntertainment(it) }
             val src = if (pool.isNotEmpty()) pool else videos
-            navTo(Screen.Player(src, src.indices.random(), "Shuffle")
+            navTo(Screen.Player(src, src.indices.random(), "Shuffle"))
         }
     }
 
@@ -1040,7 +1040,7 @@ fun ArnoldsRoomApp() {
                         val pool = videos.filter { isEntertainment(it) }
                         val src = if (pool.isNotEmpty()) pool else videos
                         val pick = src.indices.random()
-                        navTo(Screen.Player(src, pick, "Shuffle")
+                        navTo(Screen.Player(src, pick, "Shuffle"))
                     }
                 }
             )
@@ -1048,7 +1048,7 @@ fun ArnoldsRoomApp() {
                 counts = Filter.values().associateWith { filtered(it).size },
                 showsCount = detectShows(videos, ::catOf).size,
                 movieFolderCount = detectMovieFolders(videos, ::catOf).size,
-                onPick = { navTo(Screen.Library(it) },
+                onPick = { navTo(Screen.Library(it)) },
                 onShows = { navTo(Screen.Shows) },
                 onMovieFolders = { navTo(Screen.MovieFolders) },
                 onRoom = { navTo(Screen.Room) },
@@ -1058,7 +1058,7 @@ fun ArnoldsRoomApp() {
                 shows = detectShows(videos, ::catOf),
                 isWatched = ::isWatched,
                 savedPos = ::savedPos,
-                onPick = { navTo(Screen.ShowDetail(it) },
+                onPick = { navTo(Screen.ShowDetail(it)) },
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() }
             )
@@ -1071,7 +1071,7 @@ fun ArnoldsRoomApp() {
                         isWatched = ::isWatched,
                         savedPos = ::savedPos,
                         onToggleWatched = ::toggleWatched,
-                        onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.showTitle) },
+                        onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.showTitle)) },
                         onRoom = { navTo(Screen.Room) },
                         onBack = { navigateBack() }
                     )
@@ -1080,7 +1080,7 @@ fun ArnoldsRoomApp() {
                         shows = detectShows(videos, ::catOf),
                         isWatched = ::isWatched,
                         savedPos = ::savedPos,
-                        onPick = { navTo(Screen.ShowDetail(it) },
+                        onPick = { navTo(Screen.ShowDetail(it)) },
                         onRoom = { navTo(Screen.Room) },
                         onBack = { navigateBack() }
                     )
@@ -1088,7 +1088,7 @@ fun ArnoldsRoomApp() {
             }
             is Screen.MovieFolders -> MovieFoldersScreen(
                 folders = detectMovieFolders(videos, ::catOf),
-                onPick = { navTo(Screen.FolderDetail(it) },
+                onPick = { navTo(Screen.FolderDetail(it)) },
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() }
             )
@@ -1101,7 +1101,7 @@ fun ArnoldsRoomApp() {
                     catOf = ::catOf,
                     isFav = ::isFav,
                     savedPos = ::savedPos,
-                    onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies") },
+                    onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies")) },
                     onRoom = { navTo(Screen.Room) },
                     onBack = { navigateBack() }
                 )
@@ -1113,7 +1113,7 @@ fun ArnoldsRoomApp() {
                 catOf = ::catOf,
                 isFav = ::isFav,
                 savedPos = ::savedPos,
-                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label) },
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label)) },
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() },
                 onStats = { navTo(Screen.Stats) }
@@ -1124,7 +1124,7 @@ fun ArnoldsRoomApp() {
                 catOf = ::catOf,
                 isFav = ::isFav,
                 savedPos = ::savedPos,
-                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, "Search") },
+                onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, "Search")) },
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() }
             )
@@ -1169,7 +1169,7 @@ fun ArnoldsRoomApp() {
                 startIndex = s.startIndex,
                 fromLabel = s.fromLabel,
                 prefs = prefs,
-                onBack = { navTo(Screen.Library(Filter.ALL) },
+                onBack = { navigateBack() },
                 onShrink = { idx ->
                     miniQueue = s.queue
                     miniIndex = idx
@@ -1187,7 +1187,7 @@ fun ArnoldsRoomApp() {
                     prefs = prefs,
                     onExpand = { idx ->
                         miniQueue = null
-                        navTo(Screen.Player(q, idx, "Mini player")
+                        navTo(Screen.Player(q, idx, "Mini player"))
                     },
                     onClose = { miniQueue = null },
                     radioPause = radioActive || MusicState.playing
