@@ -114,6 +114,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -590,11 +591,55 @@ fun ArnoldsRoomApp() {
     fun pauseMusic() {
         try { music?.let { if (it.isPlaying) it.pause() } } catch (e: Exception) { }
     }
+
+    // ----- Nightwave Plaza radio (May, 2026-11-10): a live vaporwave
+    // stream in a draggable pop-up, opened from a ring in the room.
+    // Playing it takes over the room's sound: the room song pauses,
+    // and any video — full player or mini pop-up — pauses too (the
+    // players watch radioActive and pause themselves).
+    var radioPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var radioPlaying by remember { mutableStateOf(false) }
+    var radioBuffering by remember { mutableStateOf(false) }
+    var showRadio by remember { mutableStateOf(false) }
+    val radioActive = radioPlaying || radioBuffering
+    fun stopRadio() {
+        try { radioPlayer?.stop() } catch (e: Exception) { }
+        try { radioPlayer?.release() } catch (e: Exception) { }
+        radioPlayer = null
+        radioPlaying = false
+        radioBuffering = false
+        // Hand the room its song back, if it wants it.
+        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone) startMusic()
+    }
+    fun startRadio() {
+        pauseMusic()
+        radioBuffering = true
+        try {
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            mp.setDataSource("https://radio.plaza.one/mp3")
+            mp.setOnPreparedListener { p ->
+                radioBuffering = false
+                try { p.start(); radioPlaying = true } catch (e: Exception) { }
+            }
+            mp.setOnErrorListener { _, _, _ -> stopRadio(); true }
+            radioPlayer = mp
+            mp.prepareAsync()
+        } catch (e: Exception) {
+            radioBuffering = false
+        }
+    }
+    DisposableEffect(Unit) { onDispose { try { radioPlayer?.release() } catch (e: Exception) { } } }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone) startMusic()
+                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone && !radioActive) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -602,10 +647,10 @@ fun ArnoldsRoomApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(screen, musicOn, miniQueue, doorGone) {
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive) {
         // The song waits until the doors have fully opened — no music
         // while you're still standing outside knocking.
-        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone) {
+        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone && !radioActive) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
@@ -732,6 +777,7 @@ fun ArnoldsRoomApp() {
                 onToggleNight = { nightOverride = !night },
                 musicOn = musicOn,
                 onToggleMusic = { musicOn = !musicOn },
+                onOpenRadio = { showRadio = true },
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -851,7 +897,8 @@ fun ArnoldsRoomApp() {
                     miniQueue = s.queue
                     miniIndex = idx
                     screen = Screen.Room
-                }
+                },
+                radioPause = radioActive
             )
             }
         }
@@ -865,9 +912,18 @@ fun ArnoldsRoomApp() {
                         miniQueue = null
                         screen = Screen.Player(q, idx, "Mini player")
                     },
-                    onClose = { miniQueue = null }
+                    onClose = { miniQueue = null },
+                    radioPause = radioActive
                 )
             }
+        }
+        if (screen is Screen.Room && showRadio) {
+            RadioPlayerBox(
+                playing = radioPlaying,
+                buffering = radioBuffering,
+                onToggle = { if (radioActive) stopRadio() else startRadio() },
+                onClose = { showRadio = false }
+            )
         }
         if (!doorGone) {
             DoorIntro(onDone = { doorGone = true })
@@ -1282,7 +1338,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
@@ -1302,7 +1358,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.815f, 0.415f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     val tallSpots = listOf(
         Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
@@ -1312,7 +1369,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.555f, 0.495f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.795f, 0.400f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -1357,7 +1415,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         scope.launch {
             roomZoom.animateTo(1.07f, tween(240))
             val d = spot.dest
-            if (d != null) onHotspot(d) else onShuffle()
+            if (spot.label == "Plaza") onOpenRadio()
+            else if (d != null) onHotspot(d) else onShuffle()
         }
     }
     // If a tap doesn't lead anywhere — the permission box was answered
@@ -2291,7 +2350,8 @@ fun PlayerScreen(
     fromLabel: String,
     prefs: SharedPreferences,
     onBack: () -> Unit,
-    onShrink: (Int) -> Unit
+    onShrink: (Int) -> Unit,
+    radioPause: Boolean
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -2311,6 +2371,9 @@ fun PlayerScreen(
         }
     }
     var isPlaying by remember { mutableStateOf(true) }
+    // The Plaza stream takes over the room's sound (May, 2026-11-10):
+    // when the radio starts, this video pauses.
+    LaunchedEffect(radioPause) { if (radioPause) try { exo.pause() } catch (e: Exception) { } }
     var position by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
     var index by remember { mutableStateOf(startIndex) }
@@ -2779,12 +2842,98 @@ fun PlayerScreen(
 // ---------- Mini player: a small, movable, resizable video box over the room ----------
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+// The Nightwave Plaza pop-up: a small draggable player card in the
+// room, moved by its title bar, just like the video pop-up. Closing
+// it doesn't stop the stream — reopen it from the Plaza ring to stop.
+@Composable
+fun RadioPlayerBox(
+    playing: Boolean,
+    buffering: Boolean,
+    onToggle: () -> Unit,
+    onClose: () -> Unit
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val maxWPx = with(density) { maxWidth.toPx() }
+        val maxHPx = with(density) { maxHeight.toPx() }
+        val widthDp = 272.dp
+        val widthPx = with(density) { widthDp.toPx() }
+        val heightPx = with(density) { 172.dp.toPx() }
+        var offX by remember { mutableStateOf<Float?>(null) }
+        var offY by remember { mutableStateOf<Float?>(null) }
+        val x = (offX ?: (maxWPx - widthPx) / 2f).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+        val y = (offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() }))
+            .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+        Column(
+            Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .width(widthDp)
+                .shadow(10.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1B1035))
+                .border(2.5.dp, Color(0xFFFF6EC7), RoundedCornerShape(16.dp))
+                .padding(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                    detectDragGestures { change, drag ->
+                        change.consume()
+                        offX = x + drag.x
+                        offY = y + drag.y
+                    }
+                }
+            ) {
+                Icon(Icons.Filled.Radio, null, tint = Color(0xFFFF6EC7), modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "NIGHTWAVE PLAZA",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Filled.Close, "Close radio player", tint = Color(0xFFB39DDB), modifier = Modifier.size(18.dp))
+                }
+            }
+            Text("24/7 vaporwave radio · plaza.one", color = Color(0xFFB39DDB), fontSize = 11.5.sp)
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(52.dp).clip(CircleShape).background(Color(0xFFFF6EC7)).clickable { onToggle() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (playing) "Stop the stream" else "Play the stream",
+                        tint = Color(0xFF1B1035),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    when {
+                        buffering -> "Connecting…"
+                        playing -> "● LIVE"
+                        else -> "Tap play to listen"
+                    },
+                    color = if (playing) Color(0xFFFF6EC7) else Color(0xFFB39DDB),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
 fun MiniPlayerBox(
     queue: List<VideoItem>,
     startIndex: Int,
     prefs: SharedPreferences,
     onExpand: (Int) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    radioPause: Boolean
 ) {
     val context = LocalContext.current
     val exo = remember {
@@ -2804,6 +2953,8 @@ fun MiniPlayerBox(
     }
     var index by remember { mutableStateOf(startIndex) }
     var isPlaying by remember { mutableStateOf(true) }
+    // Same takeover as the full player: the radio pauses this video.
+    LaunchedEffect(radioPause) { if (radioPause) try { exo.pause() } catch (e: Exception) { } }
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
