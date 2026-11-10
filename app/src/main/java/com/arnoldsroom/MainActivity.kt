@@ -1517,7 +1517,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.47f, 0.350f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.635f, 0.395f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
@@ -1528,7 +1528,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
         Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.40f, 0.395f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.40f, 0.360f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.650f, 0.400f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
@@ -1538,7 +1538,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     )
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.360f, 0.392f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.370f, 0.415f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.678f, 0.412f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
