@@ -1407,7 +1407,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.130f, 0.350f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     val tallSpots = listOf(
-        Hotspot(0.505f, 0.100f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.505f, 0.125f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.135f, 0.465f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.378f, 0.408f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.660f, 0.428f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
