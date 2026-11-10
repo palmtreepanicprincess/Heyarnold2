@@ -601,13 +601,27 @@ fun ArnoldsRoomApp() {
     }
     // No status bar anywhere in the app — May asked for it gone
     // altogether (it used to come back outside the room and stay).
-    // A swipe from the top edge can still peek it for a moment.
+    // And on the room screen itself, the navigation bar hides too:
+    // her Razr kept a black band exactly one gesture-bar tall at the
+    // bottom (measured from her screenshot: ~1.9% of the screen),
+    // because the system held that strip back for the navigation area
+    // even edge-to-edge. Hiding the bar on the room releases the strip
+    // to the painting. A swipe from an edge can still peek the bars.
     val activity = context as? Activity
     LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.statusBars())
+    }
+    LaunchedEffect(screen) {
+        val act = activity ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        if (screen is Screen.Room) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+        }
     }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
@@ -2417,9 +2431,9 @@ fun PlayerScreen(
             if (on) {
                 controller.hide(WindowInsetsCompat.Type.systemBars())
             } else {
-                // The status bar stays gone app-wide; only the nav returns.
-                controller.hide(WindowInsetsCompat.Type.statusBars())
-                controller.show(WindowInsetsCompat.Type.navigationBars())
+                // The player stays immersive either way; the bars stay
+                // gone app-wide (status everywhere, nav in room/player).
+                controller.hide(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
