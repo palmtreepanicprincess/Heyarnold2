@@ -3185,21 +3185,13 @@ private class VlcBackup(private val context: Context) {
     var onAspect: ((Float) -> Unit)? = null
     var onPlayState: ((Boolean) -> Unit)? = null
 
-    private val voutCallback = object : org.videolan.libvlc.interfaces.IVLCVout.Callback {
-        override fun onNewVideoLayout(
-            vout: org.videolan.libvlc.interfaces.IVLCVout,
-            width: Int, height: Int,
-            visibleWidth: Int, visibleHeight: Int,
-            sarNum: Int, sarDen: Int
-        ) {
-            if (visibleWidth > 0 && visibleHeight > 0) {
-                val sar = if (sarNum > 0 && sarDen > 0) sarNum.toFloat() / sarDen.toFloat() else 1f
-                val a = visibleWidth * sar / visibleHeight
-                mainHandler.post { onAspect?.invoke(a) }
-            }
+    private val layoutListener = org.videolan.libvlc.interfaces.IVLCVout.OnNewVideoLayoutListener {
+        _, _, _, visibleWidth, visibleHeight, sarNum, sarDen ->
+        if (visibleWidth > 0 && visibleHeight > 0) {
+            val sar = if (sarNum > 0 && sarDen > 0) sarNum.toFloat() / sarDen.toFloat() else 1f
+            val a = visibleWidth * sar / visibleHeight
+            mainHandler.post { onAspect?.invoke(a) }
         }
-        override fun onSurfacesCreated(vout: org.videolan.libvlc.interfaces.IVLCVout) { }
-        override fun onSurfacesDestroyed(vout: org.videolan.libvlc.interfaces.IVLCVout) { }
     }
 
     fun play(uri: Uri, startMs: Long, rate: Float) {
@@ -3244,7 +3236,7 @@ private class VlcBackup(private val context: Context) {
         try {
             try { p.vlcVout.detachViews() } catch (e: Exception) { }
             p.vlcVout.setVideoView(tv)
-            p.vlcVout.attachViews(voutCallback)
+            p.vlcVout.attachViews(layoutListener)
         } catch (e: Exception) { }
     }
 
@@ -4173,6 +4165,7 @@ fun MiniPlayerBox(
             playWhenReady = true
         }
     }
+    var index by remember { mutableStateOf(startIndex) }
     // Backup engine (May, 2026-11-10): same arrangement as the
     // full player — a file ExoPlayer can't open (.avi & friends)
     // is handed to the VLC-core backup on this TV too.
@@ -4199,7 +4192,6 @@ fun MiniPlayerBox(
             try { exo.seekTo(i, 0L); exo.play() } catch (e: Exception) { }
         }
     }
-    var index by remember { mutableStateOf(startIndex) }
     var isPlaying by remember { mutableStateOf(true) }
     // Same takeover as the full player, two-way like it: hushed by
     // the radio/a song, auto-resumes when the takeover clears,
