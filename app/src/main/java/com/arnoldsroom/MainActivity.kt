@@ -796,7 +796,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
         Text(
             spot.label,
             color = spot.color,
-            fontSize = if (compact) 9.sp else 10.5.sp,
+            fontSize = if (compact) 11.sp else 13.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -858,11 +858,9 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         val maxWDp = maxWidth
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
-        val activeSpots = when {
-            tallMode -> tallSpots
-            night -> spots
-            else -> wideDaySpots
-        }
+        // One spot set per screen shape: the day and night paintings share the
+        // same composition, so the buttons must not move when the light changes.
+        val activeSpots = if (tallMode) tallSpots else wideDaySpots
         val roomBitmap = rememberRoomBitmap(tallMode, night)
         val crops = remember(roomBitmap, tallMode) {
             if (roomBitmap == null) emptyMap<String, Bitmap>()
@@ -965,12 +963,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (musicOn) "Music" else "Muted",
                 color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xAA10131A))
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold
             )
         }
         Column(
@@ -1000,12 +994,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (night) "Day" else "Night",
                 color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xAA10131A))
-                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold
             )
         }
     }
