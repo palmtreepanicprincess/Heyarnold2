@@ -800,35 +800,35 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
 @Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
-        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
-        Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
-        Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFFB388FF)),
-        Hotspot(0.635f, 0.395f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF6E40)),
-        Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF69F0AE)),
-        Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFFF4081)),
-        Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
-        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
+        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.635f, 0.395f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
-        Hotspot(0.505f, 0.135f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
-        Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
-        Hotspot(0.40f, 0.395f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFFB388FF)),
-        Hotspot(0.664f, 0.386f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF6E40)),
-        Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF69F0AE)),
-        Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFFF4081)),
-        Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
-        Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
+        Hotspot(0.505f, 0.135f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.40f, 0.395f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.664f, 0.386f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     val tallSpots = listOf(
-        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
-        Hotspot(0.122f, 0.461f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
-        Hotspot(0.502f, 0.390f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFFB388FF)),
-        Hotspot(0.564f, 0.401f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF6E40)),
-        Hotspot(0.506f, 0.463f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF69F0AE)),
-        Hotspot(0.071f, 0.527f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFFF4081)),
-        Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
-        Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
+        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.122f, 0.461f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.502f, 0.390f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.564f, 0.401f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.506f, 0.463f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.071f, 0.527f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     // The hint: shows on arrival, fades after 4 idle seconds, and comes back
     // whenever a blank spot in the room is tapped (which restarts the timer).
@@ -1086,7 +1086,7 @@ fun VideoRow(
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (watched) Icon(Icons.Filled.CheckCircle, "Watched", tint = Color(0xFF69F0AE), modifier = Modifier.size(19.dp))
+            if (watched) Icon(Icons.Filled.CheckCircle, "Watched", tint = Color(0xFF00C853), modifier = Modifier.size(19.dp))
             if (fav) Icon(Icons.Filled.Favorite, "Favorite", tint = RoomOrange, modifier = Modifier.size(19.dp))
             Text(
                 when (cat) { AssignCat.MOVIE -> "Movie"; AssignCat.TV -> "TV"; AssignCat.NONE -> "—" },
@@ -1270,12 +1270,12 @@ fun ShowsScreen(
                                 LinearProgressIndicator(
                                     progress = { watchedCount.toFloat() / epCount },
                                     modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = Color(0xFF69F0AE), trackColor = Color(0x33FFFFFF)
+                                    color = Color(0xFF00C853), trackColor = Color(0x33FFFFFF)
                                 )
                                 Spacer(Modifier.height(5.dp))
                                 Text(
                                     if (next == null) "All caught up ✓" else "Next: ${next.title}",
-                                    color = if (next == null) Color(0xFF69F0AE) else RoomOrange,
+                                    color = if (next == null) Color(0xFF00C853) else RoomOrange,
                                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1325,7 +1325,7 @@ fun ShowDetailScreen(
                 item {
                     Text(
                         "All caught up ✓ — every episode watched.",
-                        color = Color(0xFF69F0AE), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF00C853), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     )
                 }
