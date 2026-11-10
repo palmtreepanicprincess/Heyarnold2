@@ -1045,7 +1045,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             )
         }
         Text(
-            "Series created by Craig Bartlett\nApp Created by May Marquardt",
+            "Series created by Craig Bartlett\nApp created by May Marquardt",
             fontFamily = HandwrittenFont,
             color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
             fontSize = 15.sp,
