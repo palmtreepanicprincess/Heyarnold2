@@ -27,11 +27,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -167,6 +169,8 @@ val CartoonFont = FontFamily(
     Font(R.font.baloo2_bold, FontWeight.SemiBold),
     Font(R.font.baloo2_bold, FontWeight.Bold)
 )
+
+val HandwrittenFont = FontFamily(Font(R.font.caveat))
 
 fun cartoonTypography(): Typography {
     val b = Typography()
@@ -457,6 +461,7 @@ fun ArnoldsRoomApp() {
     var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
     var miniIndex by remember { mutableStateOf(0) }
     var musicOn by remember { mutableStateOf(true) }
+    var doorGone by remember { mutableStateOf(false) }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -706,6 +711,9 @@ fun ArnoldsRoomApp() {
                 )
             }
         }
+        if (!doorGone) {
+            DoorIntro(onDone = { doorGone = true })
+        }
     }
     }
 }
@@ -828,6 +836,55 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+// Opening moment: a pair of doors opens into the room each time the app starts.
+@Composable
+fun DoorIntro(onDone: () -> Unit) {
+    val slide = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(300)
+        slide.animateTo(1f, tween(950, easing = FastOutSlowInEasing))
+        onDone()
+    }
+    Row(
+        Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { onDone() }) }
+    ) {
+        DoorPanel(knobOnRight = true, toLeft = true, progress = slide.value)
+        DoorPanel(knobOnRight = false, toLeft = false, progress = slide.value)
+    }
+}
+
+@Composable
+fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float) {
+    Box(
+        Modifier.fillMaxHeight().weight(1f)
+            .graphicsLayer { translationX = (if (toLeft) -1f else 1f) * progress * this.size.width }
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0xFF4A6FA5), Color(0xFF2F4E79))
+                )
+            )
+            .border(2.dp, Color(0xFF22364F))
+    ) {
+        Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f).padding(6.dp)
+                    .border(3.dp, Color(0xFF22364F)).background(Color(0xFF557DB2))
+            )
+            Box(
+                Modifier.fillMaxWidth().weight(1f).padding(6.dp)
+                    .border(3.dp, Color(0xFF22364F)).background(Color(0xFF557DB2))
+            )
+        }
+        Box(
+            Modifier
+                .align(if (knobOnRight) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = 10.dp)
+                .size(15.dp).shadow(3.dp, CircleShape).clip(CircleShape)
+                .background(Color(0xFFFFC93C))
+        )
+    }
+}
+
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
@@ -986,6 +1043,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
+        Text(
+            "Created by May",
+            fontFamily = HandwrittenFont,
+            color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+            fontSize = 15.sp,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp)
+        )
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
