@@ -2126,7 +2126,6 @@ fun VideoThumb(uri: Uri, modifier: Modifier = Modifier) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 // Section heading in the room's own grammar (May, 2026-11-10,
 // cohesion round two): a bold title over the same two-tone rule
 // the screen banners wear — dark ink line, accent line under it.
@@ -2140,6 +2139,7 @@ fun SectionTitle(text: String, accent: Color, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoRow(
     v: VideoItem,
