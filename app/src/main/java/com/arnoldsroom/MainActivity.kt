@@ -83,7 +83,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -202,6 +204,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1886,6 +1889,17 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
     }
 }
 
+// The phone's own navigation bar overlaps the bottom of the
+// app — the app draws edge to edge under it, and the bar's
+// height varies a lot by phone (a slim gesture pill on some, a
+// fat button hotbar on others). Bottom-anchored things ask the
+// system for the real height and lift clear of it.
+@Composable
+private fun navBarInsetDp(): Dp {
+    val density = LocalDensity.current
+    return with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean, dimmed: Boolean = false) {
@@ -2016,7 +2030,16 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         // bug — May's suggestion, 2026-11-10. Other screens keep the
         // snug 12dp.
         val winAspect = maxWDp / maxHDp
-        val bottomTextPad = if (winAspect in 0.40f..0.42f) 30.dp else 12.dp
+        // Lift clear of BOTH flat-bottom traps: the Razr's black
+        // strip (the shape rule) and the phone's own navigation
+        // bar, whose real height is asked from the system — a
+        // fat button hotbar lifts the texts much further than a
+        // slim gesture pill does (a download user's S25+ hotbar
+        // was eating the room's bottom row, 2026-11-10).
+        val bottomTextPad = maxOf(
+            if (winAspect in 0.40f..0.42f) 30.dp else 12.dp,
+            navBarInsetDp() + 4.dp
+        )
         // One spot set per screen shape: the day and night paintings share the
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
@@ -5484,7 +5507,8 @@ fun MusicMiniBox(
     }
     Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.align(Alignment.BottomEnd).padding(14.dp)
+            Modifier.align(Alignment.BottomEnd)
+                .padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = maxOf(14.dp, navBarInsetDp() + 6.dp))
                 .offset { IntOffset(offX.toInt(), offY.toInt()) }
                 .width(widthDpF.dp)
                 .shadow(10.dp, RoundedCornerShape(16.dp))
