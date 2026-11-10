@@ -1407,6 +1407,14 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         val maxWDp = maxWidth
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
+        // Her Razr keeps a black strip (~2%) at the bottom that no
+        // window flag reclaims. On that screen shape (aspect ~0.41,
+        // the Razr's tall display), lift the bottom texts clear of
+        // the strip so it reads as a deliberate frame instead of a
+        // bug — May's suggestion, 2026-11-10. Other screens keep the
+        // snug 12dp.
+        val winAspect = maxWDp / maxHDp
+        val bottomTextPad = if (winAspect in 0.40f..0.42f) 30.dp else 12.dp
         // One spot set per screen shape: the day and night paintings share the
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
@@ -1501,7 +1509,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         AnimatedVisibility(
             visible = hintVisible,
             exit = fadeOut(tween(500)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomTextPad + 2.dp)
         ) {
             Text(
                 "Tap something in the room",
@@ -1515,7 +1523,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             )
         }
         Row(
-            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp),
+            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = bottomTextPad),
             verticalAlignment = Alignment.Bottom
         ) {
             // The AM/PM renders smaller than the digits — at full size
@@ -1552,7 +1560,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
             fontSize = 15.sp,
             textAlign = TextAlign.End,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = bottomTextPad)
         )
         Column(
             modifier = Modifier
