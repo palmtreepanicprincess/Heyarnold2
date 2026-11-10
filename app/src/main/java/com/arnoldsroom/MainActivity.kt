@@ -62,6 +62,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1389,7 +1391,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
@@ -1406,12 +1409,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     val tallSpots = listOf(
         Hotspot(0.505f, 0.100f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.135f, 0.465f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.390f, 0.420f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.648f, 0.435f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
-        Hotspot(0.555f, 0.495f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
-        Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.378f, 0.408f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.660f, 0.428f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.545f, 0.512f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.068f, 0.558f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.732f, 0.582f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.912f, 0.468f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.145f, 0.360f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
@@ -2644,62 +2647,78 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
-            // tap = show/hide controls, double-tap sides = skip 10s
+            // One combined gesture layer (May, 2026-11-10): taps and
+            // vertical swipes used to live in two stacked layers, and
+            // the swipe layer starved the taps — once the controls
+            // faded, tapping couldn't bring them back. One handler now
+            // sorts it out: quick tap = show/hide controls, quick
+            // double-tap on a side = skip 10 seconds, vertical drag =
+            // brightness (left half) / volume (right half).
             Box(
                 Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { showControls = !showControls },
-                        onDoubleTap = { off ->
-                            if (off.x < size.width / 2) exo.seekTo((exo.currentPosition - 10_000).coerceAtLeast(0))
-                            else exo.seekTo(exo.currentPosition + 10_000)
-                            showControls = true
+                    var lastTapMs = 0L
+                    var lastTapLeft = false
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val left = down.position.x < size.width / 2
+                        val dragVolume = !left
+                        var startFraction = if (dragVolume) {
+                            val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            if (maxV > 0) audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxV else 0f
+                        } else {
+                            val b = activity?.window?.attributes?.screenBrightness ?: -1f
+                            if (b >= 0f) b else 0.5f
                         }
-                    )
+                        var dragging = false
+                        var upMs = 0L
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val ch = ev.changes.firstOrNull() ?: break
+                            if (ch.pressed) {
+                                val dy = ch.position.y - down.position.y
+                                val dx = ch.position.x - down.position.x
+                                if (!dragging && kotlin.math.abs(dy) > viewConfiguration.touchSlop &&
+                                    kotlin.math.abs(dy) > kotlin.math.abs(dx)
+                                ) dragging = true
+                                if (dragging && !locked) {
+                                    val frac = (startFraction - dy / (size.height * 0.75f)).coerceIn(0f, 1f)
+                                    if (dragVolume) {
+                                        val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                        audioManager.setStreamVolume(
+                                            AudioManager.STREAM_MUSIC,
+                                            (frac * maxV).roundToInt().coerceIn(0, maxV), 0
+                                        )
+                                        gestureMsg = "Volume ${(frac * 100).roundToInt()}%"
+                                    } else {
+                                        activity?.let { act ->
+                                            val attrs = act.window.attributes
+                                            attrs.screenBrightness = frac.coerceIn(0.03f, 1f)
+                                            act.window.attributes = attrs
+                                        }
+                                        gestureMsg = "Brightness ${(frac * 100).roundToInt()}%"
+                                    }
+                                    ch.consume()
+                                }
+                            } else {
+                                upMs = ch.uptimeMillis
+                                break
+                            }
+                        }
+                        if (!dragging) {
+                            if (upMs - lastTapMs in 1..320 && lastTapLeft == left) {
+                                if (left) exo.seekTo((exo.currentPosition - 10_000).coerceAtLeast(0))
+                                else exo.seekTo(exo.currentPosition + 10_000)
+                                showControls = true
+                                lastTapMs = 0L
+                            } else {
+                                showControls = !showControls
+                                lastTapMs = upMs
+                                lastTapLeft = left
+                            }
+                        }
+                    }
                 }
             )
-            // Swipe up/down on the video: left half = brightness,
-            // right half = volume, like the big players.
-            if (!locked) {
-                Box(
-                    Modifier.fillMaxSize().pointerInput(Unit) {
-                        var dragVolume = false
-                        var startFraction = 0f
-                        var totalDy = 0f
-                        detectVerticalDragGestures(
-                            onDragStart = { off ->
-                                dragVolume = off.x >= size.width / 2
-                                totalDy = 0f
-                                startFraction = if (dragVolume) {
-                                    val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                    if (maxV > 0) audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxV else 0f
-                                } else {
-                                    val b = activity?.window?.attributes?.screenBrightness ?: -1f
-                                    if (b >= 0f) b else 0.5f
-                                }
-                            },
-                            onVerticalDrag = { _, dy ->
-                                totalDy += dy
-                                val frac = (startFraction - totalDy / (size.height * 0.75f)).coerceIn(0f, 1f)
-                                if (dragVolume) {
-                                    val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                    audioManager.setStreamVolume(
-                                        AudioManager.STREAM_MUSIC,
-                                        (frac * maxV).roundToInt().coerceIn(0, maxV), 0
-                                    )
-                                    gestureMsg = "Volume ${(frac * 100).roundToInt()}%"
-                                } else {
-                                    activity?.let { act ->
-                                        val attrs = act.window.attributes
-                                        attrs.screenBrightness = frac.coerceIn(0.03f, 1f)
-                                        act.window.attributes = attrs
-                                    }
-                                    gestureMsg = "Brightness ${(frac * 100).roundToInt()}%"
-                                }
-                            }
-                        )
-                    }
-                )
-            }
             if (showControls && !locked && !PipControl.inPip) {
                 Column(Modifier.fillMaxSize().background(Color(0x66000000))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
