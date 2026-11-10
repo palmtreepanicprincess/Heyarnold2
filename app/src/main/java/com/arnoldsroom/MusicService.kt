@@ -396,6 +396,16 @@ class MusicService : Service() {
         stopSelf()
     }
 
+    // Swiping the app away in the task switcher stops the music
+    // (May, 2026-11-10): background play is for when the app is
+    // still open in the background, not for closing it outright.
+    // (Her call: this goes for the music player specifically —
+    // the radio keeps its own behavior.)
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopEverything()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         handler.removeCallbacks(ticker)
         try { player?.release() } catch (e: Exception) { }

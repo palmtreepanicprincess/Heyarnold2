@@ -296,6 +296,7 @@ sealed class Screen {
     object Search : Screen()
     object Settings : Screen()
     object Stats : Screen()
+    object About : Screen()
     object MusicLibrary : Screen()
     object MusicPlayer : Screen()
     data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String) : Screen()
@@ -1166,6 +1167,10 @@ fun ArnoldsRoomApp() {
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() }
             )
+            is Screen.About -> AboutScreen(
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
+            )
             is Screen.MusicLibrary -> MusicLibraryScreen(
                 prefs = prefs,
                 onPlaySong = { q, idx -> playSongs(q, idx) },
@@ -1268,7 +1273,7 @@ fun ArnoldsRoomApp() {
                 Box(
                     Modifier.size(38.dp).shadow(4.dp, CircleShape).clip(CircleShape)
                         .background(Color(0xCC10131A))
-                        .border(1.8.dp, RoomSky, CircleShape),
+                        .border(1.8.dp, RoomYellow, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1742,7 +1747,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.47f, 0.350f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.635f, 0.395f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.635f, 0.395f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
         Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
@@ -1753,7 +1759,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
     val wideDaySpots = listOf(
         Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.40f, 0.360f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.650f, 0.400f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.130f, 0.260f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.650f, 0.400f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
@@ -1763,7 +1770,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.370f, 0.415f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.678f, 0.412f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.120f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.678f, 0.412f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
         Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
@@ -2075,7 +2083,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                     .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
-                    .border(1.8.dp, RoomSky, CircleShape),
+                    .border(1.8.dp, RoomYellow, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (musicCrop != null) {
@@ -2899,7 +2907,8 @@ fun SettingsScreen(
               ) {
                 Text(
                     "The room map — knock twice to come in:\n" +
-                    "• The TV at the back — Plaza: the Nightwave Plaza radio lives on it now\n" +
+                    "• The TV at the back — Hey Arnold: the story of the show this room comes from\n" +
+                    "• Up on the left wall — Plaza: the Nightwave Plaza radio\n" +
                     "• Shelves — categories: every video list lives behind them\n" +
                     "• Bed — continue watching, right where you left off\n" +
                     "• Window — search\n" +
@@ -2913,6 +2922,78 @@ fun SettingsScreen(
                     color = RoomTextDim, fontSize = 14.sp
                 )
               }
+            }
+        }
+    }
+}
+
+// ---------- Hey Arnold! — the learning page ----------
+// May (2026-11-10): the old All ring came back as "Hey Arnold",
+// sitting where All used to sit (on the TV), and it opens this:
+// facts about the show, its creator, its people, its movies.
+@Composable
+fun AboutCard(title: String, body: String) {
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+            .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp)
+    ) {
+        Column {
+            Text(title, color = Color(0xFFFFC107), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(body, color = RoomTextDim, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+fun AboutScreen(onRoom: () -> Unit, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader("Hey Arnold!", onRoom, onBack, accent = Color(0xFFFFC107))
+        LazyColumn(
+            Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                AboutCard(
+                    "Move it, football head!",
+                    "Hey Arnold! is the Nickelodeon cartoon this whole app lives inside. Arnold is a fourth grader with a football-shaped head and a huge heart, growing up in the city of Hillwood with his grandparents and a boarding house full of characters. Nearly every episode, somebody in the neighborhood has a problem — and Arnold is the kid who stops, listens, and helps them through it."
+                )
+            }
+            item {
+                AboutCard(
+                    "The show",
+                    "Created by Craig Bartlett, Hey Arnold! premiered on Nickelodeon on October 7, 1996, and ran for five seasons and 100 episodes, ending in 2004. It stood out from other cartoons of its day: real city streets, kids with real problems — money worries, divorced parents, being the new kid — handled gently, with a jazzy score by Jim Lang playing underneath it all."
+                )
+            }
+            item {
+                AboutCard(
+                    "The creator",
+                    "Craig Bartlett started Arnold long before the series: in the late 1980s he made Arnold claymation shorts (one of them turned up on Sesame Street), and a version of Arnold appeared in a 1996 short shown in theaters. Bartlett was also a story editor on Rugrats, and went on to create Dinosaur Train and Ready Jet Go! for PBS. The name on the room's credit line — \"Series created by Craig Bartlett\" — is his."
+                )
+            }
+            item {
+                AboutCard(
+                    "The gang",
+                    "Helga G. Pataki talks tough and bullies Arnold in public — and secretly adores him, keeping a locket with his picture and a closet shrine at home. Gerald Johanssen is Arnold's best friend and the keeper of Hillwood's urban legends. Grandpa Phil and Grandma Gertie run the Sunset Arms boarding house, where the boarders — Ernie, Mr. Hyunh, and the ever-scheming Oskar Kokoshka — are family whether they like it or not."
+                )
+            }
+            item {
+                AboutCard(
+                    "The voices",
+                    "Because the show ran for years while its star was growing up, Arnold was voiced by a line of young actors: Toran Caudell first, then Phillip Van Dyke, Spencer Klein, and Alex D. Linz. Francesca Marie Smith voiced Helga for the whole run, and Jamil Walker Smith was Gerald. When Arnold returned in The Jungle Movie, Mason Vale Cotton took over the football head."
+                )
+            }
+            item {
+                AboutCard(
+                    "The movies",
+                    "Hey Arnold!: The Movie (2002) took the gang to the big screen to save their neighborhood from a developer named Scheck who wanted to bulldoze it. Fans then waited fifteen years for the ending the series never got: Hey Arnold!: The Jungle Movie (2017) finally sent Arnold to San Lorenzo to learn what really happened to his parents, Miles and Stella — the show's biggest mystery, answered at last."
+                )
+            }
+            item {
+                AboutCard(
+                    "Did you know?",
+                    "• Hillwood is a blend of the cities Bartlett knew: Seattle, Portland, and Brooklyn.\n• Helga's middle name is Geraldine — after Gerald.\n• Stoop Kid is afraid to leave his stoop.\n• Arnold's bedroom, with its skylight, remote-controlled everything, and couch made from a car seat, was voted by fans as the coolest cartoon bedroom ever — and it's the room on this app's home screen.\n• Arnold's last name was a mystery for the whole original run — The Jungle Movie finally confirmed it: Shortman, the very nickname Grandpa called him all along."
+                )
             }
         }
     }
