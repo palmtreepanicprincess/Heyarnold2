@@ -536,6 +536,7 @@ fun ArnoldsRoomApp() {
         )
     }
     var pendingDest by remember { mutableStateOf<Screen?>(null) }
+    var pendingShuffle by remember { mutableStateOf(false) }
     var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
     var miniIndex by remember { mutableStateOf(0) }
     var musicOn by remember { mutableStateOf(true) }
@@ -596,6 +597,17 @@ fun ArnoldsRoomApp() {
     }
     LaunchedEffect(granted) {
         if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+    }
+    // Shuffle asked for permission first: once the library actually
+    // arrives, finish the shuffle instead of leaving her in the room.
+    LaunchedEffect(videos, pendingShuffle) {
+        if (pendingShuffle && videos.isNotEmpty()) {
+            pendingShuffle = false
+            pauseMusic()
+            val pool = videos.filter { isEntertainment(it) }
+            val src = if (pool.isNotEmpty()) pool else videos
+            screen = Screen.Player(src, src.indices.random(), "Shuffle")
+        }
     }
 
     // The home-screen widget asks to jump straight back into a video.
@@ -680,7 +692,7 @@ fun ArnoldsRoomApp() {
                 onShuffle = {
                     pauseMusic()
                     if (!granted) {
-                        pendingDest = null
+                        pendingShuffle = true
                         launcher.launch(videoPermission())
                     } else if (videos.isNotEmpty()) {
                         val pool = videos.filter { isEntertainment(it) }
@@ -910,173 +922,57 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 // Each hotspot is drawn as an outline of the thing it stands for — a TV
 // outline over the TV, a bed over the bed, a door over the door — traced
 // twice: a dark halo so it reads on the busy painting, then the color.
-fun DrawScope.objectOutline(kind: String, color: Color, sw: Float, fishCx: Float = 47f, fishDir: Float = 1f) {
-    val w = size.width
-    val h = size.height
-    fun x(u: Float) = w * u / 100f
-    fun y(u: Float) = h * u / 100f
-    fun pt(u: Float, v: Float) = Offset(x(u), y(v))
-    val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    fun line(a: Offset, b: Offset) =
-        drawLine(color, a, b, strokeWidth = sw, cap = StrokeCap.Round)
-    fun rrect(l: Float, t: Float, r: Float, b: Float, rad: Float) = drawRoundRect(
-        color,
-        topLeft = pt(l, t),
-        size = ComposeSize(x(r) - x(l), y(b) - y(t)),
-        cornerRadius = CornerRadius(x(rad), x(rad)),
-        style = stroke
-    )
-    fun circ(u: Float, v: Float, r: Float) =
-        drawCircle(color, radius = x(r), center = pt(u, v), style = stroke)
-    fun dot(u: Float, v: Float, r: Float) =
-        drawCircle(color, radius = x(r), center = pt(u, v))
-    when (kind) {
-        "TV" -> {
-            line(pt(40f, 24f), pt(23f, 5f))
-            line(pt(60f, 24f), pt(77f, 5f))
-            rrect(12f, 24f, 88f, 70f, 6f)
-            line(pt(50f, 70f), pt(50f, 80f))
-            line(pt(32f, 82f), pt(68f, 82f))
-        }
-        "Continue" -> {
-            line(pt(10f, 84f), pt(10f, 32f))
-            line(pt(10f, 32f), pt(22f, 32f))
-            line(pt(22f, 32f), pt(22f, 54f))
-            line(pt(22f, 54f), pt(90f, 54f))
-            line(pt(90f, 54f), pt(90f, 84f))
-            line(pt(10f, 84f), pt(90f, 84f))
-            rrect(26f, 42f, 46f, 52f, 4f)
-            line(pt(58f, 54f), pt(58f, 68f))
-            line(pt(58f, 68f), pt(90f, 68f))
-        }
-        "Search" -> {
-            rrect(18f, 8f, 82f, 92f, 4f)
-            line(pt(50f, 8f), pt(50f, 92f))
-            line(pt(18f, 50f), pt(82f, 50f))
-        }
-        "Shelves" -> {
-            rrect(14f, 6f, 86f, 94f, 3f)
-            line(pt(14f, 35f), pt(86f, 35f))
-            line(pt(14f, 63f), pt(86f, 63f))
-            listOf(24f to 22f, 32f to 19f, 40f to 24f, 52f to 20f, 62f to 23f, 72f to 18f)
-                .forEach { (bx, top) -> line(pt(bx, 35f), pt(bx, top)) }
-            listOf(26f to 50f, 36f to 47f, 48f to 52f, 58f to 49f, 70f to 51f)
-                .forEach { (bx, top) -> line(pt(bx, 63f), pt(bx, top)) }
-            listOf(24f to 80f, 34f to 78f, 46f to 82f, 60f to 79f, 72f to 81f)
-                .forEach { (bx, top) -> line(pt(bx, 94f), pt(bx, top)) }
-        }
-        "Favorites" -> {
-            rrect(12f, 16f, 88f, 64f, 8f)
-            val wave = Path().apply {
-                moveTo(x(17f), y(30f))
-                quadraticBezierTo(x(28f), y(22f), x(40f), y(30f))
-                quadraticBezierTo(x(52f), y(38f), x(64f), y(30f))
-                quadraticBezierTo(x(74f), y(23f), x(83f), y(30f))
-            }
-            drawPath(wave, color, style = stroke)
-            drawOval(
-                color,
-                topLeft = pt(fishCx - 12f, 40f),
-                size = ComposeSize(x(24f), y(13f)),
-                style = stroke
-            )
-            val tail = Path().apply {
-                moveTo(x(fishCx + 12f * fishDir), y(46f))
-                lineTo(x(fishCx + 25f * fishDir), y(37f))
-                lineTo(x(fishCx + 25f * fishDir), y(55f))
-                close()
-            }
-            drawPath(tail, color, style = stroke)
-            dot(fishCx - 6f * fishDir, 45f, 1.8f)
-            line(pt(28f, 64f), pt(24f, 86f))
-            line(pt(72f, 64f), pt(76f, 86f))
-            line(pt(18f, 86f), pt(82f, 86f))
-        }
-        "New" -> {
-            rrect(12f, 12f, 88f, 88f, 3f)
-            line(pt(37f, 12f), pt(37f, 88f))
-            line(pt(63f, 12f), pt(63f, 88f))
-            line(pt(12f, 50f), pt(88f, 50f))
-        }
-        "Shuffle" -> {
-            rrect(37f, 6f, 63f, 94f, 9f)
-            circ(50f, 22f, 5f)
-            dot(44f, 38f, 1.8f)
-            dot(56f, 38f, 1.8f)
-            dot(44f, 50f, 1.8f)
-            dot(56f, 50f, 1.8f)
-            rrect(43f, 64f, 57f, 78f, 3f)
-        }
-        "Settings" -> {
-            rrect(26f, 4f, 74f, 96f, 3f)
-            rrect(35f, 16f, 65f, 50f, 2f)
-            rrect(35f, 60f, 65f, 84f, 2f)
-            circ(66f, 55f, 2.6f)
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, compact: Boolean, onTap: () -> Unit) {
-    val scale = remember { Animatable(0.6f) }
-    val alpha = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(60L * index)
-        launch { alpha.animateTo(1f, tween(250)) }
-        scale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow))
+fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, onTap: () -> Unit) {
+    // The chip wears the room: a circle cut out of the painting itself,
+    // one-to-one, centered on the spot — so the button IS the thing it opens.
+    val density = LocalDensity.current
+    val chipDp = if (compact) 52.dp else 68.dp
+    val frac = with(density) { chipDp.toPx() } / max(1, imgWpx).toFloat()
+    val crop = remember(art, frac, spot.fx, spot.fy) {
+        art?.let { cropAround(it, spot.fx, spot.fy, frac) }
     }
-    LaunchedEffect(tapped) {
-        if (tapped) {
-            scale.animateTo(1.32f, tween(110))
-            scale.animateTo(1.14f, tween(140))
-        }
-    }
-    // The fish in the Favorites tank swims back and forth.
-    var swimT by remember { mutableStateOf(0f) }
-    LaunchedEffect(spot.label) {
-        if (spot.label == "Favorites") {
-            while (true) {
-                swimT = (System.currentTimeMillis() % 6000L) / 6000f
-                delay(60)
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(index * 70L); shown = true }
+    val scale = animateFloatAsState(
+        if (shown) 1f else 0.3f,
+        spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
+    )
+    val color = spot.color
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(chipDp)
+                .scale(if (tapped) scale.value * 1.18f else scale.value)
+                .alpha(if (shown) 1f else 0f)
+                .clip(CircleShape)
+                .background(Color(0xFF10131A))
+                .border(2.5.dp, if (tapped) RoomYellow else color, CircleShape)
+                .clickable { onTap() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (crop != null) {
+                Image(
+                    bitmap = crop.asImageBitmap(),
+                    contentDescription = spot.label,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
             }
         }
-    }
-    val swimTri = if (swimT < 0.5f) swimT * 2f else 2f - swimT * 2f
-    val fishCx = 38f + swimTri * 18f
-    val fishDir = if (swimT < 0.5f) 1f else -1f
-    Column(
-        modifier = Modifier
-            .graphicsLayer {
-                scaleX = scale.value
-                scaleY = scale.value
-                this.alpha = alpha.value
-            }
-            .combinedClickable(onClick = onTap),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(Modifier.size(if (compact) 52.dp else 68.dp)) {
-            Canvas(Modifier.fillMaxSize()) {
-                objectOutline(spot.label, Color(0xD910131A), 7.dp.toPx(), fishCx, fishDir)
-                objectOutline(spot.label, if (tapped) RoomYellow else spot.color, 3.5.dp.toPx(), fishCx, fishDir)
-            }
-        }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(3.dp))
         Text(
             spot.label,
             color = Color(0xFF10131A),
             fontSize = if (compact) 13.sp else 14.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .clip(RoundedCornerShape(5.dp))
-                .background(spot.color.copy(alpha = 0.95f))
+                .clip(RoundedCornerShape(8.dp))
+                .background((if (tapped) RoomYellow else color).copy(alpha = 0.95f))
                 .padding(horizontal = if (compact) 6.dp else 5.dp, vertical = if (compact) 1.dp else 0.dp)
         )
     }
 }
-
-// Opening moment: a pair of doors opens into the room each time the app starts.
-// A short wooden knock, synthesized in code (no sound file needed): a low
 // thump plus a woody click that both die away in about a tenth of a second.
 fun buildKnockTrack(): AudioTrack {
     val sampleRate = 44100
@@ -1289,6 +1185,18 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             if (d != null) onHotspot(d) else onShuffle()
         }
     }
+    // If a tap doesn't lead anywhere — the permission box was answered
+    // "no", or Shuffle is still waiting on permission — the room would
+    // otherwise sit zoomed-in with its buttons stuck. Heal it: un-zoom
+    // and re-arm the buttons. (Real navigation disposes this screen
+    // first, which cancels this effect, so it never fights a real tap.)
+    LaunchedEffect(tappedLabel) {
+        if (tappedLabel != null) {
+            delay(1000)
+            tappedLabel = null
+            roomZoom.animateTo(1f, tween(300))
+        }
+    }
     BoxWithConstraints(
         Modifier.fillMaxSize().background(Color.Black)
             .pointerInput(Unit) { detectTapGestures(onTap = { hintTick++ }) }
@@ -1342,6 +1250,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 }
             }
         }
+        val drawnWpx = with(LocalDensity.current) { drawnW.roundToPx() }
         activeSpots.forEachIndexed { i, spot ->
             val cx = offX + drawnW * spot.fx
             val cy = offY + drawnH * spot.fy
@@ -1353,6 +1262,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             ) {
                 RoomChip(
                     spot = spot,
+                    art = roomBitmap,
+                    imgWpx = drawnWpx,
                     index = i,
                     tapped = tappedLabel == spot.label,
                     compact = tallMode,
