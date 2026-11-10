@@ -196,6 +196,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -1545,6 +1546,18 @@ fun rememberRoomBitmap(tall: Boolean, phase: DayPhase): Bitmap? {
     }
 }
 
+// The cohesive backgrounds follow the screen the app is
+// actually on (May, 2026-11-10): the tall painting on the cover
+// screen, the wide painting unfolded — the room's own 0.62 rule.
+// The backdrop, headers and music banner used to hardcode the
+// wide painting, so the folded phone wore the inner screen's room.
+@Composable
+fun rememberRoomBitmapForWindow(phase: DayPhase): Bitmap? {
+    val cfg = LocalConfiguration.current
+    val tall = cfg.screenWidthDp.toFloat() / cfg.screenHeightDp.coerceAtLeast(1).toFloat() < 0.62f
+    return rememberRoomBitmap(tall, phase)
+}
+
 // ---------- The Room (home) ----------
 data class Hotspot(
     val fx: Float, val fy: Float, val label: String, val icon: ImageVector, val dest: Screen?,
@@ -2394,7 +2407,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
 // keep their own black worlds; the lists stay fully readable.
 @Composable
 fun RoomBackdrop() {
-    val bmp = rememberRoomBitmap(false, RoomNightState.phase)
+    val bmp = rememberRoomBitmapForWindow(RoomNightState.phase)
     Box(Modifier.fillMaxSize()) {
         Crossfade(targetState = bmp, animationSpec = tween(850), label = "backdropArt") { b ->
             if (b != null) {
@@ -2438,7 +2451,7 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, onBack: () -> Unit, accent: 
     // room), an ink line and a colored line under it in the two-tone
     // style of the room's rings — so leaving the room doesn't leave
     // its world behind (the cohesion pass, 2026-11-10).
-    val bmp = rememberRoomBitmap(false, RoomNightState.phase)
+    val bmp = rememberRoomBitmapForWindow(RoomNightState.phase)
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(62.dp)) {
             if (bmp != null) {
@@ -4824,7 +4837,7 @@ fun MusicLibraryScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        val bannerM = rememberRoomBitmap(false, RoomNightState.phase)
+        val bannerM = rememberRoomBitmapForWindow(RoomNightState.phase)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                 .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
