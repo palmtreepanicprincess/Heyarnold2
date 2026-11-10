@@ -11,7 +11,7 @@ if (resDir.exists()) {
     resDir.walkTopDown().filter { it.isFile }.forEach { f ->
         var nb = f.name.lowercase().replace(Regex("[^a-z0-9._]"), "_")
         if (nb.isNotEmpty() && nb[0].isDigit()) nb = "x" + nb
-        if (nb != f.name) f.renameTo(java.io.File(f.parentFile, nb))
+        if (nb != f.name) f.renameTo(f.parentFile.resolve(nb))
     }
 }
 android {
