@@ -575,6 +575,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// The room's day/night as the APP is currently showing it — the
+// real clock plus her moon/sun toggle for this session. The root
+// keeps this in step with its own night value; the list-screen
+// banners read it, so the cohesive design follows the app's mode
+// instead of the raw clock (May, 2026-11-10: the banners stayed in
+// night mode no matter what the room was showing).
+object RoomNightState {
+    var night by mutableStateOf(false)
+}
+
 // ---------- App root ----------
 @Composable
 fun ArnoldsRoomApp() {
@@ -583,6 +593,7 @@ fun ArnoldsRoomApp() {
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
     var nightOverride by remember { mutableStateOf<Boolean?>(null) }
     val night = nightOverride ?: isNightNow()
+    LaunchedEffect(night) { RoomNightState.night = night }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var granted by remember {
         mutableStateOf(
@@ -700,13 +711,18 @@ fun ArnoldsRoomApp() {
             try {
                 context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
             } catch (e: Exception) { }
+            // Mark her songs paused right away too: the video players
+            // hush themselves while MusicState.playing reads true, and
+            // waiting for the service to report back could leave the
+            // video she tapped frozen on its first frame.
+            MusicState.playing = false
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing) startMusic()
+                Lifecycle.Event.ON_START -> if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -715,9 +731,16 @@ fun ArnoldsRoomApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
-        // The song waits until the doors have fully opened — no music
-        // while you're still standing outside knocking.
-        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing) {
+        // The room song is the app's ambience (May, 2026-11-10): it
+        // keeps playing while she browses — the libraries, shelves,
+        // search, stats, settings — and only yields when something
+        // else actually plays: one of her songs, the radio, or a
+        // video (the full video player and the music player's own
+        // screen stay quiet for whatever is loaded there). It still
+        // waits until the doors have fully opened first.
+        if (musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        ) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
@@ -765,7 +788,6 @@ fun ArnoldsRoomApp() {
         }
     }
     fun go(dest: Screen, needsVideos: Boolean = true) {
-        pauseMusic()
         if (needsVideos && !granted) {
             pendingDest = dest
             launcher.launch(videoPermission())
@@ -1917,7 +1939,7 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, 
     // room), an ink line and a colored line under it in the two-tone
     // style of the room's rings — so leaving the room doesn't leave
     // its world behind (the cohesion pass, 2026-11-10).
-    val night = remember { isNightNow() }
+    val night = RoomNightState.night
     val bmp = rememberRoomBitmap(false, night)
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(62.dp)) {
@@ -3670,7 +3692,7 @@ fun MusicLibraryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
-        val nightM = remember { isNightNow() }
+        val nightM = RoomNightState.night
         val bannerM = rememberRoomBitmap(false, nightM)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
