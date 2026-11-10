@@ -1162,14 +1162,14 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     val tallSpots = listOf(
-        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
-        Hotspot(0.122f, 0.461f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.344f, 0.404f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.614f, 0.413f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
-        Hotspot(0.516f, 0.472f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
-        Hotspot(0.071f, 0.535f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.680f, 0.530f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.070f, 0.467f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.325f, 0.402f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.636f, 0.412f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.523f, 0.480f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.065f, 0.552f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.712f, 0.547f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     // Shake the phone while you're in the room and Shuffle plays something.
     val sensorContext = LocalContext.current
