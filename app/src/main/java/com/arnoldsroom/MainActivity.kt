@@ -787,6 +787,16 @@ fun ArnoldsRoomApp() {
     LaunchedEffect(granted) {
         if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
     }
+    // Fresh scan on every entry (May, 2026-11-10): whenever she
+    // steps into a video screen — library, categories, search, the
+    // player itself — the list is re-read from the phone, so a video
+    // downloaded a minute ago is already there. (The music library
+    // already reloads its songs each time it opens.)
+    LaunchedEffect(screen, granted) {
+        if (granted && screen !is Screen.Room) {
+            videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+        }
+    }
     // The home-screen widget asks to jump straight back into a video.
     LaunchedEffect(ContinueRequest.videoId, videos) {
         val id = ContinueRequest.videoId
