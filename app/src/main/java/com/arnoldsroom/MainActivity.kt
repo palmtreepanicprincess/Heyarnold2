@@ -802,7 +802,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
     ) {
         Box(
             Modifier
-                .size(if (compact) 42.dp else 56.dp)
+                .size(if (compact) 52.dp else 68.dp)
                 .shadow(7.dp, CircleShape)
                 .clip(CircleShape)
                 .background(if (tapped) RoomOrange else Color(0xF210131A))
@@ -818,19 +818,19 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
                 )
                 if (tapped) Box(Modifier.fillMaxSize().background(Color(0x55FF7A29)))
             } else {
-                Icon(spot.icon, spot.label, tint = RoomYellow, modifier = Modifier.size(22.dp))
+                Icon(spot.icon, spot.label, tint = RoomYellow, modifier = Modifier.size(27.dp))
             }
         }
         Spacer(Modifier.height(2.dp))
         Text(
             spot.label,
             color = Color(0xFF10131A),
-            fontSize = if (compact) 11.sp else 13.sp,
+            fontSize = if (compact) 13.sp else 15.5.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clip(RoundedCornerShape(5.dp))
                 .background(spot.color.copy(alpha = 0.95f))
-                .padding(horizontal = 4.dp, vertical = 0.dp)
+                .padding(horizontal = 6.dp, vertical = 1.dp)
         )
     }
 }
@@ -966,7 +966,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         // One-to-one crops: each circle shows the painting at the same scale
         // as the painting behind it. The visible art diameter (chip size
         // minus its inset) is mapped to that fraction of the drawn width.
-        val chipDp = if (tallMode) 42f else 56f
+        val chipDp = if (tallMode) 52f else 68f
         val crops = remember(roomBitmap, tallMode, drawnW) {
             if (roomBitmap == null) emptyMap<String, Bitmap>()
             else {
@@ -976,7 +976,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         }
         // The corner toggles wear the room too: a crop of the sky behind them,
         // cut one-to-one like the hotspot chips.
-        val cornerFrac = (42f / drawnW.value).coerceIn(0.03f, 0.30f)
+        val cornerFrac = (46f / drawnW.value).coerceIn(0.03f, 0.30f)
         val musicCrop = remember(roomBitmap, drawnW) {
             roomBitmap?.let { cropAround(it, if (tallMode) 0.07f else 0.045f, 0.04f, cornerFrac) }
         }
@@ -1014,8 +1014,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             val cy = offY + drawnH * spot.fy
             Box(
                 Modifier.offset(
-                    x = cx - if (tallMode) 21.dp else 28.dp,
-                    y = cy - if (tallMode) 21.dp else 28.dp
+                    x = cx - if (tallMode) 26.dp else 34.dp,
+                    y = cy - if (tallMode) 26.dp else 34.dp
                 )
             ) {
                 RoomChip(
@@ -1061,7 +1061,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         ) {
             Box(
                 Modifier
-                    .size(42.dp)
+                    .size(46.dp)
                     .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
@@ -1090,12 +1090,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (musicOn) "Music" else "Muted",
                 color = Color.White,
-                fontSize = 11.5.sp,
+                fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(Color(0xAA10131A))
-                    .padding(horizontal = 4.dp, vertical = 0.dp)
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
             )
         }
         Column(
@@ -1107,7 +1107,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         ) {
             Box(
                 Modifier
-                    .size(42.dp)
+                    .size(46.dp)
                     .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (dayNightCrop != null) Color.Transparent else Color(0xCC10131A))
@@ -1135,12 +1135,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (night) "Day" else "Night",
                 color = Color.White,
-                fontSize = 11.5.sp,
+                fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(Color(0xAA10131A))
-                    .padding(horizontal = 4.dp, vertical = 0.dp)
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
             )
         }
     }
