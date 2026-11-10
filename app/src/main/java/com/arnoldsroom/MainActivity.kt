@@ -608,11 +608,11 @@ object RadioBoxState {
 // open album/artist/playlist, search text, and every list's
 // scroll — for the session, same as the pop-ups' places.
 object MusicLibState {
-    var tab by mutableStateOf(0)
-    var query by mutableStateOf("")
-    var albumPick by mutableStateOf<String?>(null)
-    var artistPick by mutableStateOf<String?>(null)
-    var playlistPick by mutableStateOf<String?>(null)
+    val tab = mutableStateOf(0)
+    val query = mutableStateOf("")
+    val albumPick = mutableStateOf<String?>(null)
+    val artistPick = mutableStateOf<String?>(null)
+    val playlistPick = mutableStateOf<String?>(null)
     val songsList = LazyListState()
     val albumsList = LazyListState()
     val artistsList = LazyListState()
