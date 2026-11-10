@@ -678,7 +678,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
     ) {
         Box(
             Modifier
-                .size(47.dp)
+                .size(56.dp)
                 .shadow(7.dp, CircleShape)
                 .clip(CircleShape)
                 .background(if (tapped) RoomOrange else Color(0xF210131A))
@@ -798,7 +798,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         activeSpots.forEachIndexed { i, spot ->
             val cx = offX + drawnW * spot.fx
             val cy = offY + drawnH * spot.fy
-            Box(Modifier.offset(x = cx - 27.dp, y = cy - 27.dp)) {
+            Box(Modifier.offset(x = cx - 30.dp, y = cy - 30.dp)) {
                 RoomChip(
                     spot = spot,
                     index = i,
