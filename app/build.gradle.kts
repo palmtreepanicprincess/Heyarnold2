@@ -3,6 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Normalize resource file names before the build: lowercase, [a-z0-9._] only,
+// and a resource name must start with a letter, so prefix "x" if it starts with a digit.
+val resDir = layout.projectDirectory.dir("src/main/res").asFile
+if (resDir.exists()) {
+    resDir.walkTopDown().filter { it.isFile }.forEach { f ->
+        var nb = f.name.lowercase().replace(Regex("[^a-z0-9._]"), "_")
+        if (nb.isNotEmpty() && nb[0].isDigit()) nb = "x" + nb
+        if (nb != f.name) f.renameTo(java.io.File(f.parentFile, nb))
+    }
+}
 android {
     namespace = "com.arnoldsroom"
     compileSdk = 36
