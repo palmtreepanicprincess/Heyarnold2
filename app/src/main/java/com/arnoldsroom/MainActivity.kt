@@ -249,6 +249,25 @@ fun heuristicCat(v: VideoItem): AssignCat {
     }
 }
 
+// Personal clips (screen recordings, live wallpapers, camera clips) are not
+// entertainment: they live in tell-tale folders, carry tell-tale names, or
+// run under a minute — no episode or movie does.
+private val junkFolderSegs = setOf(
+    "screen recordings", "screen recording", "screenrecorder", "screen recorder",
+    "screenshots", "screenshot", "camera", "dcim", "wallpaper", "wallpapers",
+    "live wallpaper", "live wallpapers", "stories", "cache", ".thumbnails"
+)
+
+fun isJunkClip(v: VideoItem): Boolean {
+    if (pathSegments(v).any { it.lowercase() in junkFolderSegs }) return true
+    val n = v.name.lowercase()
+    if (n.startsWith("screen_recording") || n.startsWith("screen recording") ||
+        n.startsWith("screencast") || n.startsWith("lv_")
+    ) return true
+    if (v.durationMs in 1..59_999L) return true
+    return false
+}
+
 // ---------- Folder auto-detection: shows, seasons, movie folders ----------
 private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s_]*(\\d{1,2})$|^s(\\d{1,2})$")
 private val epCodeRegex = Regex("(?i)s(\\d{1,2})e(\\d{1,3})")
@@ -512,6 +531,11 @@ fun ArnoldsRoomApp() {
             else -> heuristicCat(v)
         }
     }
+    fun isEntertainment(v: VideoItem): Boolean {
+        val o = prefs.getString("cat_${v.id}", null)
+        if (o == "MOVIE" || o == "TV") return true
+        return !isJunkClip(v)
+    }
     fun isFav(v: VideoItem) = prefs.getBoolean("fav_${v.id}", false)
     fun isWatched(v: VideoItem) = prefs.getBoolean("watched_${v.id}", false)
     var libVersion by remember { mutableStateOf(0) }
@@ -526,10 +550,10 @@ fun ArnoldsRoomApp() {
         Filter.MOVIES -> videos.filter { catOf(it) == AssignCat.MOVIE }
         Filter.TV -> videos.filter { catOf(it) == AssignCat.TV }
         Filter.FAVORITES -> videos.filter { isFav(it) }
-        Filter.UNSORTED -> videos.filter { catOf(it) == AssignCat.NONE }
-        Filter.RECENT -> videos.take(30)
+        Filter.UNSORTED -> videos.filter { catOf(it) == AssignCat.NONE && isEntertainment(it) }
+        Filter.RECENT -> videos.filter { isEntertainment(it) }.take(30)
         Filter.CONTINUE -> videos.filter {
-            val p = savedPos(it); it.durationMs > 0 && p > 10_000 && p < it.durationMs * 95 / 100
+            val p = savedPos(it); it.durationMs > 0 && p > 10_000 && p < it.durationMs * 95 / 100 && isEntertainment(it)
         }
     }
 
@@ -561,8 +585,10 @@ fun ArnoldsRoomApp() {
                         pendingDest = null
                         launcher.launch(videoPermission())
                     } else if (videos.isNotEmpty()) {
-                        val idx = videos.indices.random()
-                        screen = Screen.Player(videos, idx, "Shuffle")
+                        val pool = videos.filter { isEntertainment(it) }
+                        val src = if (pool.isNotEmpty()) pool else videos
+                        val pick = src.indices.random()
+                        screen = Screen.Player(src, pick, "Shuffle")
                     }
                 }
             )
@@ -886,6 +912,15 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 activeSpots.associate { it.label to cropAround(roomBitmap, it.fx, it.fy, frac) }
             }
         }
+        // The corner toggles wear the room too: a crop of the sky behind them,
+        // cut one-to-one like the hotspot chips.
+        val cornerFrac = (42f / drawnW.value).coerceIn(0.03f, 0.30f)
+        val musicCrop = remember(roomBitmap, drawnW) {
+            roomBitmap?.let { cropAround(it, if (tallMode) 0.07f else 0.045f, 0.04f, cornerFrac) }
+        }
+        val dayNightCrop = remember(roomBitmap, drawnW) {
+            roomBitmap?.let { cropAround(it, if (tallMode) 0.93f else 0.955f, 0.04f, cornerFrac) }
+        }
         Box(
             Modifier.fillMaxSize().graphicsLayer {
                 scaleX = roomZoom.value
@@ -959,10 +994,19 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .size(42.dp)
                     .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(Color(0xCC10131A))
-                    .border(1.5.dp, RoomSky, CircleShape),
+                    .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
+                    .border(2.5.dp, RoomYellow, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
+                if (musicCrop != null) {
+                    Image(
+                        bitmap = musicCrop.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x59000000)))
+                }
                 Crossfade(targetState = musicOn, animationSpec = tween(300), label = "musicIcon") { on ->
                     Icon(
                         if (on) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
@@ -990,11 +1034,21 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Box(
                 Modifier
                     .size(42.dp)
+                    .shadow(6.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(Color(0xCC10131A))
-                    .border(1.5.dp, RoomSky, CircleShape),
+                    .background(if (dayNightCrop != null) Color.Transparent else Color(0xCC10131A))
+                    .border(2.5.dp, Color(0xFFFF8F00), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
+                if (dayNightCrop != null) {
+                    Image(
+                        bitmap = dayNightCrop.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x59000000)))
+                }
                 Crossfade(targetState = night, animationSpec = tween(300), label = "dayNightIcon") { n ->
                     Icon(
                         if (n) Icons.Filled.LightMode else Icons.Filled.DarkMode,
