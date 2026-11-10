@@ -1910,11 +1910,6 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
 }
 
 // ---------- Shared bits ----------
-fun isNightNow(): Boolean {
-    val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    return h >= 19 || h < 7
-}
-
 @Composable
 fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, right: @Composable () -> Unit = {}) {
     // Every list screen now opens with a slice of the room itself:
