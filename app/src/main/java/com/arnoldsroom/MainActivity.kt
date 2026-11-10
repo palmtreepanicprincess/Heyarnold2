@@ -713,7 +713,7 @@ fun rememberRoomBitmap(tall: Boolean, night: Boolean): Bitmap? {
                 tall && night -> listOf("arnolds_room_tall_night", "file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
                 tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
                 night -> listOf("arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
-                else -> listOf("arnolds_room_wide", "arnolds_room")
+                else -> listOf("file_00000000ed6081f586fc3d5ad2e02ce3", "arnolds_room_wide", "arnolds_room")
             }
             var bmp: Bitmap? = null
             for (n in names) {
