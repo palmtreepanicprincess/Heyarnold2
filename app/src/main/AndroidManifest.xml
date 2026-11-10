@@ -4,9 +4,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <application
         android:allowBackup="true"
-        android:icon="@drawable/34f0f57ee19c4a9833cc07c499205115"
+        android:icon="@drawable/x34f0f57ee19c4a9833cc07c499205115"
         android:label="Arnold's Room"
-        android:roundIcon="@drawable/34f0f57ee19c4a9833cc07c499205115"
+        android:roundIcon="@drawable/x34f0f57ee19c4a9833cc07c499205115"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
