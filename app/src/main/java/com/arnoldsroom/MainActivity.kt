@@ -1612,14 +1612,23 @@ private class CityAmbiencePlayer {
         thread = Thread {
             val rate = 22050
             val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
-            val t = AudioTrack.Builder()
-                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                .setBufferSizeInBytes(maxOf(minBuf, rate / 2))
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
+            // Guarded exactly the way the first (working) version
+            // was: an unguarded build() here crashed the whole app
+            // at room entry on May's phone (2026-11-10) — the new
+            // class had also shrunk the buffer to a size that was
+            // not frame-aligned. rate * 2 bytes, and any failure
+            // just means no city, never a crash.
+            val t = try {
+                AudioTrack.Builder()
+                    .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                    .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                    .setBufferSizeInBytes(maxOf(minBuf, rate * 2))
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+            } catch (e: Exception) { null }
+            if (t == null) { running = false; return@Thread }
             track = t
-            t.play()
+            try { t.play() } catch (e: Exception) { running = false; return@Thread }
             val rnd = java.util.Random(4242)
             val chunk = FloatArray(1024)
             var brown = 0f
