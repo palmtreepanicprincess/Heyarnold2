@@ -46,6 +46,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -135,7 +136,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -598,18 +601,6 @@ fun ArnoldsRoomApp() {
     LaunchedEffect(granted) {
         if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
     }
-    // Shuffle asked for permission first: once the library actually
-    // arrives, finish the shuffle instead of leaving her in the room.
-    LaunchedEffect(videos, pendingShuffle) {
-        if (pendingShuffle && videos.isNotEmpty()) {
-            pendingShuffle = false
-            pauseMusic()
-            val pool = videos.filter { isEntertainment(it) }
-            val src = if (pool.isNotEmpty()) pool else videos
-            screen = Screen.Player(src, src.indices.random(), "Shuffle")
-        }
-    }
-
     // The home-screen widget asks to jump straight back into a video.
     LaunchedEffect(ContinueRequest.videoId, videos) {
         val id = ContinueRequest.videoId
@@ -654,6 +645,18 @@ fun ArnoldsRoomApp() {
         libVersion++
     }
     fun savedPos(v: VideoItem) = prefs.getLong("pos_${v.id}", 0L)
+
+    // Shuffle asked for permission first: once the library actually
+    // arrives, finish the shuffle instead of leaving her in the room.
+    LaunchedEffect(videos, pendingShuffle) {
+        if (pendingShuffle && videos.isNotEmpty()) {
+            pendingShuffle = false
+            pauseMusic()
+            val pool = videos.filter { isEntertainment(it) }
+            val src = if (pool.isNotEmpty()) pool else videos
+            screen = Screen.Player(src, src.indices.random(), "Shuffle")
+        }
+    }
 
     fun filtered(filter: Filter): List<VideoItem> = when (filter) {
         Filter.ALL -> videos
@@ -928,7 +931,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     // one-to-one, centered on the spot — so the button IS the thing it opens.
     val density = LocalDensity.current
     val chipDp = if (compact) 52.dp else 68.dp
-    val frac = with(density) { chipDp.toPx() } / max(1, imgWpx).toFloat()
+    val frac = with(density) { chipDp.toPx() } / imgWpx.coerceAtLeast(1).toFloat()
     val crop = remember(art, frac, spot.fx, spot.fy) {
         art?.let { cropAround(it, spot.fx, spot.fy, frac) }
     }
