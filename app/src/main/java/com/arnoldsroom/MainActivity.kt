@@ -77,6 +77,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.ClosedCaptionDisabled
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -1996,7 +2001,6 @@ fun SearchScreen(
 
 // ---------- Settings ----------
 @Composable
-@Composable
 fun StatCard(modifier: Modifier, label: String, value: String) {
     Column(
         modifier
@@ -2070,6 +2074,7 @@ fun StatsScreen(
     }
 }
 
+@Composable
 fun SettingsScreen(
     videoCount: Int,
     granted: Boolean,
