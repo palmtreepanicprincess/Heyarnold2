@@ -407,6 +407,14 @@ fun ArnoldsRoomApp() {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
+    // Status bar hides on the room screen so nothing covers the room; back everywhere else.
+    val activity = context as? Activity
+    LaunchedEffect(screen) {
+        val act = activity ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        if (screen is Screen.Room) controller.hide(WindowInsetsCompat.Type.statusBars())
+        else controller.show(WindowInsetsCompat.Type.statusBars())
+    }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
     // ----- Permission + library load -----
