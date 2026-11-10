@@ -1028,7 +1028,12 @@ fun ArnoldsRoomApp() {
 
     fun navigateBack() {
         when {
-            showRadio -> showRadio = false
+            // Only when the radio is actually on screen (in the
+            // room) does Back close it. From a menu, Back must go
+            // back — it used to close the hidden radio behind the
+            // menu instead, so returning to the room found the
+            // radio gone (May, 2026-11-10).
+            showRadio && screen is Screen.Room -> showRadio = false
             backStack.isNotEmpty() -> {
                 screen = backStack.last()
                 backStack = backStack.dropLast(1)
