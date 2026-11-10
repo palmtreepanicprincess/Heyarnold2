@@ -505,6 +505,13 @@ class ContinueWidget : AppWidgetProvider() {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge-to-edge: the app draws behind the system bars instead of
+        // being fenced into the area between them. Without this, phones
+        // whose navigation bar reserves space (like the Razr) showed a
+        // dead black band under the room — letterboxing at the bottom
+        // that no amount of in-app zoom could fill, because the app
+        // never got that strip of screen in the first place.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         intent?.let { ContinueRequest.videoId = it.getLongExtra("continue_video_id", -1L) }
         setContent { ArnoldsRoomApp() }
     }
