@@ -419,9 +419,9 @@ fun rememberRoomBitmap(tall: Boolean, night: Boolean): Bitmap? {
     return remember(tall, night) {
         try {
             val names = when {
-                tall && night -> listOf("file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall_night", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_tall", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room_night", "arnolds_room")
+                tall && night -> listOf("arnolds_room_tall_night", "file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
                 tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
-                night -> listOf("file_00000000395c81f5987ceacf0dab6e59", "arnolds_room_night", "arnolds_room")
+                night -> listOf("arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
                 else -> listOf("arnolds_room")
             }
             var bmp: Bitmap? = null
@@ -456,14 +456,14 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings)
     )
     val tallSpots = listOf(
-        Hotspot(0.50f, 0.07f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
-        Hotspot(0.11f, 0.39f, "Search", Icons.Filled.Search, Screen.Search),
-        Hotspot(0.47f, 0.33f, "Shelves", Icons.Filled.Folder, Screen.Categories),
-        Hotspot(0.615f, 0.35f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL)),
-        Hotspot(0.56f, 0.46f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE)),
-        Hotspot(0.075f, 0.57f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES)),
-        Hotspot(0.66f, 0.51f, "Shuffle", Icons.Filled.Shuffle, null),
-        Hotspot(0.90f, 0.40f, "Settings", Icons.Filled.Settings, Screen.Settings)
+        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
+        Hotspot(0.09f, 0.39f, "Search", Icons.Filled.Search, Screen.Search),
+        Hotspot(0.47f, 0.34f, "Shelves", Icons.Filled.Folder, Screen.Categories),
+        Hotspot(0.60f, 0.35f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL)),
+        Hotspot(0.53f, 0.42f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE)),
+        Hotspot(0.07f, 0.48f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES)),
+        Hotspot(0.64f, 0.48f, "Shuffle", Icons.Filled.Shuffle, null),
+        Hotspot(0.90f, 0.38f, "Settings", Icons.Filled.Settings, Screen.Settings)
     )
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         val maxWDp = maxWidth
@@ -472,7 +472,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         val activeSpots = if (tallMode) tallSpots else spots
         val roomBitmap = rememberRoomBitmap(tallMode, night)
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
-            ?: if (tallMode) 875f / 1798f else 1704f / 2048f
+            ?: if (tallMode) 960f / 2460f else 1704f / 2048f
         var drawnW = maxWDp
         var drawnH = maxWDp / aspect
         if (drawnH > maxHDp) { drawnH = maxHDp; drawnW = maxHDp * aspect }
