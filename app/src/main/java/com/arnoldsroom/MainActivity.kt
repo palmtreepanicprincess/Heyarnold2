@@ -3557,7 +3557,7 @@ fun RadioPlayerBox(
                     // Pinch to resize (May, 2026-11-10).
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoom, _ ->
-                            if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(215f, 480f)
+                            if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(150f, 480f)
                         }
                     }
             ) {
@@ -4880,7 +4880,7 @@ fun MusicMiniBox(
                 // Pinch to resize (May, 2026-11-10).
                 .pointerInput(Unit) {
                     detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(215f, 480f)
+                        if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(150f, 480f)
                     }
                 }
         ) {
