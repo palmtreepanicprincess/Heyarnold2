@@ -868,10 +868,6 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
         val roomBitmap = rememberRoomBitmap(tallMode, night)
-        val crops = remember(roomBitmap, tallMode) {
-            if (roomBitmap == null) emptyMap<String, Bitmap>()
-            else activeSpots.associate { it.label to cropAround(roomBitmap, it.fx, it.fy) }
-        }
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
             ?: if (tallMode) 783f / 2007f else 1704f / 2048f
         var drawnW = maxWDp
@@ -879,6 +875,17 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         if (drawnH > maxHDp) { drawnH = maxHDp; drawnW = maxHDp * aspect }
         val offX = (maxWDp - drawnW) / 2
         val offY = (maxHDp - drawnH) / 2
+        // One-to-one crops: each circle shows the painting at the same scale
+        // as the painting behind it. The visible art diameter (chip size
+        // minus its inset) is mapped to that fraction of the drawn width.
+        val chipDp = if (tallMode) 42f else 56f
+        val crops = remember(roomBitmap, tallMode, drawnW) {
+            if (roomBitmap == null) emptyMap<String, Bitmap>()
+            else {
+                val frac = ((chipDp - 7f) / drawnW.value).coerceIn(0.03f, 0.30f)
+                activeSpots.associate { it.label to cropAround(roomBitmap, it.fx, it.fy, frac) }
+            }
+        }
         Box(
             Modifier.fillMaxSize().graphicsLayer {
                 scaleX = roomZoom.value
