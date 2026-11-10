@@ -3491,23 +3491,26 @@ fun RadioPlayerBox(
                     }
                 ) {
                     Box(
-                        Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFFFF3E0))
+                        Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(Color(0xFFFFF3E0))
                             .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(6.dp))
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text("NIGHTWAVE PLAZA", color = Color(0xFF10131A), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("NIGHTWAVE PLAZA", color = Color(0xFF10131A), fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(6.dp))
                     Box(
                         Modifier.size(9.dp).clip(CircleShape)
                             .background(if (playing) Color(0xFFFF5252) else Color(0xFF5A2A35))
                     )
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        "ON AIR",
-                        color = if (playing) Color(0xFFFF8A80) else Color(0xFF8E7CC3),
-                        fontSize = 9.5.sp, fontWeight = FontWeight.Bold
-                    )
+                    if (widthDpF >= 200f) {
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            "ON AIR",
+                            color = if (playing) Color(0xFFFF8A80) else Color(0xFF8E7CC3),
+                            fontSize = 9.5.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
 Icon(
                         Icons.Filled.OpenInFull, "Resize player", tint = Color(0xFFFF6EC7),
                         modifier = Modifier.size(19.dp).pointerInput(Unit) {
@@ -4836,8 +4839,8 @@ fun MusicMiniBox(
                 },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("MUSIC · SIDE A", color = MusicAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
+                Text("MUSIC · SIDE A", color = MusicAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(
                     Icons.Filled.OpenInFull, "Resize player", tint = MusicAccent,
                     modifier = Modifier.size(19.dp).pointerInput(Unit) {
