@@ -11,6 +11,8 @@ import android.appwidget.AppWidgetProvider
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -61,6 +63,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -76,6 +79,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -99,6 +103,8 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MusicOff
@@ -171,6 +177,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -584,13 +591,15 @@ fun ArnoldsRoomApp() {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
-    // Status bar hides on the room screen so nothing covers the room; back everywhere else.
+    // No status bar anywhere in the app — May asked for it gone
+    // altogether (it used to come back outside the room and stay).
+    // A swipe from the top edge can still peek it for a moment.
     val activity = context as? Activity
-    LaunchedEffect(screen) {
+    LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
-        if (screen is Screen.Room) controller.hide(WindowInsetsCompat.Type.statusBars())
-        else controller.show(WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.statusBars())
     }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
@@ -1246,6 +1255,24 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             roomZoom.animateTo(1f, tween(300))
         }
     }
+    // Stay-aware: the app hides the status bar everywhere, so the room
+    // itself carries the time (handwritten, bottom-left corner) and the
+    // battery (a small % under the day/night toggle). Ticks every 15s.
+    var clockText by remember { mutableStateOf("") }
+    var batteryPct by remember { mutableStateOf(-1) }
+    LaunchedEffect(Unit) {
+        val fmt = java.text.SimpleDateFormat("h:mm", java.util.Locale.US)
+        while (true) {
+            clockText = fmt.format(java.util.Date())
+            try {
+                val bi = sensorContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                val level = bi?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                val scaleB = bi?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+                if (level >= 0 && scaleB > 0) batteryPct = level * 100 / scaleB
+            } catch (e: Exception) { }
+            delay(15_000)
+        }
+    }
     BoxWithConstraints(
         Modifier.fillMaxSize().background(Color.Black)
             .pointerInput(Unit) { detectTapGestures(onTap = { hintTick++ }) }
@@ -1270,7 +1297,10 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         // things, on any screen.
         val zoomW = maxWDp / fitW
         val zoomH = maxHDp / fitH
-        val fillZoom = (if (zoomW < zoomH) zoomW else zoomH).coerceAtMost(1.10f)
+        // Fill means the LARGER ratio: one side already fits exactly, the
+        // other side's zoom is what eats the bars (crops a sliver of the
+        // long side instead). Capped, so it stays "a little" zoom.
+        val fillZoom = (if (zoomW > zoomH) zoomW else zoomH).coerceAtMost(1.10f)
         val drawnW = fitW * fillZoom
         val drawnH = fitH * fillZoom
         val offX = (maxWDp - drawnW) / 2
@@ -1350,6 +1380,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
+        Text(
+            clockText,
+            fontFamily = HandwrittenFont,
+            color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+            fontSize = 20.sp,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp)
+        )
         Text(
             "Series created by Craig Bartlett\nApp created by May Marquardt",
             fontFamily = HandwrittenFont,
@@ -1448,6 +1485,19 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .background(Color(0xAA10131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
+            if (batteryPct >= 0) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "$batteryPct%",
+                    color = Color(0xFFFFF3E0),
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xAA10131A))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                )
+            }
         }
     }
 }
@@ -2132,6 +2182,12 @@ fun PlayerScreen(
     var marks by remember { mutableStateOf<List<Long>>(emptyList()) }
     var showMarks by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var locked by remember { mutableStateOf(false) }
+    var gestureMsg by remember { mutableStateOf<String?>(null) }
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    LaunchedEffect(gestureMsg) {
+        if (gestureMsg != null) { delay(900); gestureMsg = null }
+    }
 
     fun loadMarks() {
         val v = queue.getOrNull(index)
@@ -2255,7 +2311,9 @@ fun PlayerScreen(
             if (on) {
                 controller.hide(WindowInsetsCompat.Type.systemBars())
             } else {
-                controller.show(WindowInsetsCompat.Type.systemBars())
+                // The status bar stays gone app-wide; only the nav returns.
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+                controller.show(WindowInsetsCompat.Type.navigationBars())
             }
         }
     }
@@ -2263,8 +2321,9 @@ fun PlayerScreen(
         onDispose {
             activity?.let { act ->
                 act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                WindowCompat.getInsetsController(act.window, act.window.decorView)
-                    .show(WindowInsetsCompat.Type.systemBars())
+                val c = WindowCompat.getInsetsController(act.window, act.window.decorView)
+                c.hide(WindowInsetsCompat.Type.statusBars())
+                c.show(WindowInsetsCompat.Type.navigationBars())
             }
         }
     }
@@ -2297,7 +2356,50 @@ fun PlayerScreen(
                     )
                 }
             )
-            if (showControls && !PipControl.inPip) {
+            // Swipe up/down on the video: left half = brightness,
+            // right half = volume, like the big players.
+            if (!locked) {
+                Box(
+                    Modifier.fillMaxSize().pointerInput(Unit) {
+                        var dragVolume = false
+                        var startFraction = 0f
+                        var totalDy = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { off ->
+                                dragVolume = off.x >= size.width / 2
+                                totalDy = 0f
+                                startFraction = if (dragVolume) {
+                                    val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                    if (maxV > 0) audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxV else 0f
+                                } else {
+                                    val b = activity?.window?.attributes?.screenBrightness ?: -1f
+                                    if (b >= 0f) b else 0.5f
+                                }
+                            },
+                            onVerticalDrag = { _, dy ->
+                                totalDy += dy
+                                val frac = (startFraction - totalDy / (size.height * 0.75f)).coerceIn(0f, 1f)
+                                if (dragVolume) {
+                                    val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                    audioManager.setStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        (frac * maxV).roundToInt().coerceIn(0, maxV), 0
+                                    )
+                                    gestureMsg = "Volume ${(frac * 100).roundToInt()}%"
+                                } else {
+                                    activity?.let { act ->
+                                        val attrs = act.window.attributes
+                                        attrs.screenBrightness = frac.coerceIn(0.03f, 1f)
+                                        act.window.attributes = attrs
+                                    }
+                                    gestureMsg = "Brightness ${(frac * 100).roundToInt()}%"
+                                }
+                            }
+                        )
+                    }
+                )
+            }
+            if (showControls && !locked && !PipControl.inPip) {
                 Column(Modifier.fillMaxSize().background(Color(0x66000000))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
@@ -2349,6 +2451,9 @@ fun PlayerScreen(
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
                             Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                                 "Fullscreen", tint = Color.White)
+                        }
+                        IconButton(onClick = { locked = true; showControls = false }) {
+                            Icon(Icons.Filled.LockOpen, "Lock controls", tint = Color.White)
                         }
                     }
                     if (playerError != null) {
@@ -2424,6 +2529,44 @@ fun PlayerScreen(
                         Text(fmtDur(duration), color = Color.White, fontSize = 12.sp)
                     }
                     Spacer(Modifier.height(6.dp))
+                }
+            }
+            if (gestureMsg != null) {
+                Text(
+                    gestureMsg!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 58.dp)
+                        .clip(RoundedCornerShape(10.dp)).background(Color(0xB310131A))
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+            val nextVideo = queue.getOrNull(index + 1)
+            val remainingMs = duration - position
+            if (!locked && nextVideo != null && duration > 0 && remainingMs in 1..15_000) {
+                Row(
+                    Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 86.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(Color(0xE61D2130))
+                        .clickable { exo.seekToNextMediaItem() }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Up next in ${remainingMs / 1000 + 1}s", color = RoomYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(nextVideo.title, color = Color.White, fontSize = 13.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 230.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Icon(Icons.Filled.SkipNext, "Play next now", tint = RoomOrange, modifier = Modifier.size(26.dp))
+                }
+            }
+            if (locked) {
+                Box(Modifier.fillMaxSize()) {
+                    IconButton(
+                        onClick = { locked = false },
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                            .clip(CircleShape).background(Color(0x59000000))
+                    ) {
+                        Icon(Icons.Filled.Lock, "Unlock controls", tint = Color.White.copy(alpha = 0.9f))
+                    }
                 }
             }
         }
