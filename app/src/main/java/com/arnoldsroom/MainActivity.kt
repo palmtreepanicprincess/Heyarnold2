@@ -26,6 +26,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.combinedClickable
@@ -119,8 +120,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -774,9 +783,118 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
     return Bitmap.createBitmap(src, x, y, s2, s2)
 }
 
+// Each hotspot is drawn as an outline of the thing it stands for — a TV
+// outline over the TV, a bed over the bed, a door over the door — traced
+// twice: a dark halo so it reads on the busy painting, then the color.
+fun DrawScope.objectOutline(kind: String, color: Color, sw: Float) {
+    val w = size.width
+    val h = size.height
+    fun x(u: Float) = w * u / 100f
+    fun y(u: Float) = h * u / 100f
+    fun pt(u: Float, v: Float) = Offset(x(u), y(v))
+    val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    fun line(a: Offset, b: Offset) =
+        drawLine(color, a, b, strokeWidth = sw, cap = StrokeCap.Round)
+    fun rrect(l: Float, t: Float, r: Float, b: Float, rad: Float) = drawRoundRect(
+        color,
+        topLeft = pt(l, t),
+        size = Size(x(r) - x(l), y(b) - y(t)),
+        cornerRadius = CornerRadius(x(rad), x(rad)),
+        style = stroke
+    )
+    fun circ(u: Float, v: Float, r: Float) =
+        drawCircle(color, radius = x(r), center = pt(u, v), style = stroke)
+    fun dot(u: Float, v: Float, r: Float) =
+        drawCircle(color, radius = x(r), center = pt(u, v))
+    when (kind) {
+        "TV" -> {
+            line(pt(40f, 24f), pt(23f, 5f))
+            line(pt(60f, 24f), pt(77f, 5f))
+            rrect(12f, 24f, 88f, 70f, 6f)
+            line(pt(50f, 70f), pt(50f, 80f))
+            line(pt(32f, 82f), pt(68f, 82f))
+        }
+        "Continue" -> {
+            line(pt(10f, 84f), pt(10f, 32f))
+            line(pt(10f, 32f), pt(22f, 32f))
+            line(pt(22f, 32f), pt(22f, 54f))
+            line(pt(22f, 54f), pt(90f, 54f))
+            line(pt(90f, 54f), pt(90f, 84f))
+            line(pt(10f, 84f), pt(90f, 84f))
+            rrect(26f, 42f, 46f, 52f, 4f)
+            line(pt(58f, 54f), pt(58f, 68f))
+            line(pt(58f, 68f), pt(90f, 68f))
+        }
+        "Search" -> {
+            rrect(18f, 8f, 82f, 92f, 4f)
+            line(pt(50f, 8f), pt(50f, 92f))
+            line(pt(18f, 50f), pt(82f, 50f))
+        }
+        "Shelves" -> {
+            rrect(14f, 6f, 86f, 94f, 3f)
+            line(pt(14f, 35f), pt(86f, 35f))
+            line(pt(14f, 63f), pt(86f, 63f))
+            listOf(24f to 22f, 32f to 19f, 40f to 24f, 52f to 20f, 62f to 23f, 72f to 18f)
+                .forEach { (bx, top) -> line(pt(bx, 35f), pt(bx, top)) }
+            listOf(26f to 50f, 36f to 47f, 48f to 52f, 58f to 49f, 70f to 51f)
+                .forEach { (bx, top) -> line(pt(bx, 63f), pt(bx, top)) }
+            listOf(24f to 80f, 34f to 78f, 46f to 82f, 60f to 79f, 72f to 81f)
+                .forEach { (bx, top) -> line(pt(bx, 94f), pt(bx, top)) }
+        }
+        "Favorites" -> {
+            rrect(12f, 16f, 88f, 64f, 8f)
+            val wave = Path().apply {
+                moveTo(x(17f), y(30f))
+                quadraticBezierTo(x(28f), y(22f), x(40f), y(30f))
+                quadraticBezierTo(x(52f), y(38f), x(64f), y(30f))
+                quadraticBezierTo(x(74f), y(23f), x(83f), y(30f))
+            }
+            drawPath(wave, color, style = stroke)
+            drawOval(
+                color,
+                topLeft = pt(34f, 40f),
+                size = Size(x(24f), y(13f)),
+                style = stroke
+            )
+            val tail = Path().apply {
+                moveTo(x(58f), y(46f))
+                lineTo(x(71f), y(37f))
+                lineTo(x(71f), y(55f))
+                close()
+            }
+            drawPath(tail, color, style = stroke)
+            dot(42f, 45f, 1.8f)
+            line(pt(28f, 64f), pt(24f, 86f))
+            line(pt(72f, 64f), pt(76f, 86f))
+            line(pt(18f, 86f), pt(82f, 86f))
+        }
+        "New" -> {
+            rrect(12f, 12f, 88f, 88f, 3f)
+            line(pt(37f, 12f), pt(37f, 88f))
+            line(pt(63f, 12f), pt(63f, 88f))
+            line(pt(12f, 50f), pt(88f, 50f))
+        }
+        "Shuffle" -> {
+            rrect(37f, 6f, 63f, 94f, 9f)
+            circ(50f, 22f, 5f)
+            dot(44f, 38f, 1.8f)
+            dot(56f, 38f, 1.8f)
+            dot(44f, 50f, 1.8f)
+            dot(56f, 50f, 1.8f)
+            rrect(43f, 64f, 57f, 78f, 3f)
+        }
+        "Settings" -> {
+            rrect(26f, 4f, 74f, 96f, 3f)
+            rrect(35f, 16f, 65f, 50f, 2f)
+            rrect(35f, 60f, 65f, 84f, 2f)
+            circ(66f, 55f, 2.6f)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: Boolean, onTap: () -> Unit) {
+fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, compact: Boolean, onTap: () -> Unit) {
     val scale = remember { Animatable(0.6f) }
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -800,25 +918,10 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
             .combinedClickable(onClick = onTap),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            Modifier
-                .size(if (compact) 52.dp else 68.dp)
-                .shadow(7.dp, CircleShape)
-                .clip(CircleShape)
-                .background(if (tapped) RoomOrange else Color(0xF210131A))
-                .border(2.5.dp, if (tapped) RoomYellow else spot.color, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (art != null) {
-                Image(
-                    bitmap = art.asImageBitmap(),
-                    contentDescription = spot.label,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().padding(3.5.dp).clip(CircleShape)
-                )
-                if (tapped) Box(Modifier.fillMaxSize().background(Color(0x55FF7A29)))
-            } else {
-                Icon(spot.icon, spot.label, tint = RoomYellow, modifier = Modifier.size(27.dp))
+        Box(Modifier.size(if (compact) 52.dp else 68.dp)) {
+            Canvas(Modifier.fillMaxSize()) {
+                objectOutline(spot.label, Color(0xD910131A), 7.dp.toPx())
+                objectOutline(spot.label, if (tapped) RoomYellow else spot.color, 3.5.dp.toPx())
             }
         }
         Spacer(Modifier.height(2.dp))
@@ -963,19 +1066,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         if (drawnH > maxHDp) { drawnH = maxHDp; drawnW = maxHDp * aspect }
         val offX = (maxWDp - drawnW) / 2
         val offY = (maxHDp - drawnH) / 2
-        // One-to-one crops: each circle shows the painting at the same scale
-        // as the painting behind it. The visible art diameter (chip size
-        // minus its inset) is mapped to that fraction of the drawn width.
-        val chipDp = if (tallMode) 52f else 68f
-        val crops = remember(roomBitmap, tallMode, drawnW) {
-            if (roomBitmap == null) emptyMap<String, Bitmap>()
-            else {
-                val frac = ((chipDp - 7f) / drawnW.value).coerceIn(0.03f, 0.30f)
-                activeSpots.associate { it.label to cropAround(roomBitmap, it.fx, it.fy, frac) }
-            }
-        }
         // The corner toggles wear the room too: a crop of the sky behind them,
-        // cut one-to-one like the hotspot chips.
+        // cut one-to-one.
         val cornerFrac = (46f / drawnW.value).coerceIn(0.03f, 0.30f)
         val musicCrop = remember(roomBitmap, drawnW) {
             roomBitmap?.let { cropAround(it, if (tallMode) 0.07f else 0.045f, 0.04f, cornerFrac) }
@@ -1022,7 +1114,6 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     spot = spot,
                     index = i,
                     tapped = tappedLabel == spot.label,
-                    art = crops[spot.label],
                     compact = tallMode,
                     onTap = { activate(spot) }
                 )
