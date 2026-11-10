@@ -174,6 +174,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -578,6 +580,42 @@ object MusicBoxState {
     val offX = mutableStateOf(0f)
     val offY = mutableStateOf(0f)
     val widthDpF = mutableStateOf(175f)
+}
+
+// Pop-up traffic control (May, 2026-11-10): the pop-ups may not
+// collide or overlap. Each one reports its on-screen rectangle
+// here; a drag that would land inside a neighbor slides along
+// its edge instead, and a resize that would grow into one is
+// refused (the size snaps back to the last one that fit).
+object PopRects {
+    var radio: Rect? by mutableStateOf(null)
+    var music: Rect? by mutableStateOf(null)
+    var tv: Rect? by mutableStateOf(null)
+    val lastGood = mutableMapOf<String, Float>()
+    fun others(self: String): List<Rect> = listOfNotNull(
+        if (self != "radio") radio else null,
+        if (self != "music") music else null,
+        if (self != "tv") tv else null
+    )
+}
+
+fun Rect.hitsAny(others: List<Rect>, gap: Float = 10f): Boolean =
+    others.any { o -> left < o.right + gap && right > o.left - gap && top < o.bottom + gap && bottom > o.top - gap }
+
+fun slideDelta(cur: Rect, dx: Float, dy: Float, others: List<Rect>): Offset {
+    if (!cur.translate(Offset(dx, dy)).hitsAny(others)) return Offset(dx, dy)
+    if (!cur.translate(Offset(dx, 0f)).hitsAny(others)) return Offset(dx, 0f)
+    if (!cur.translate(Offset(0f, dy)).hitsAny(others)) return Offset(0f, dy)
+    return Offset.Zero
+}
+
+fun popSizeGuard(self: String, rect: Rect, curW: Float, apply: (Float) -> Unit) {
+    val last = PopRects.lastGood[self] ?: curW
+    if (rect.hitsAny(PopRects.others(self))) {
+        if (kotlin.math.abs(curW - last) > 0.5f) apply(last)
+    } else {
+        PopRects.lastGood[self] = curW
+    }
 }
 
 // One builder for every PiP params need: the video's real aspect,
@@ -3434,6 +3472,7 @@ fun RadioPlayerBox(
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
         var widthDpF by RadioBoxState.widthDpF
+        DisposableEffect(Unit) { onDispose { PopRects.radio = null } }
         val widthDp = widthDpF.dp
         val widthPx = with(density) { widthDp.toPx() }
         val heightPx = widthPx * (268f / 292f)
@@ -3446,6 +3485,11 @@ fun RadioPlayerBox(
             Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                 .width(widthDp)
+                .onGloballyPositioned { c ->
+                    val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
+                    PopRects.radio = r
+                    popSizeGuard("radio", r, widthDpF) { widthDpF = it }
+                }
         ) {
             // Telescopic antenna, tipped up from the cabinet's corner.
             Canvas(
@@ -3485,8 +3529,9 @@ fun RadioPlayerBox(
                             change.consume()
                             val curX = offX ?: (maxWPx - widthPx) / 2f
                             val curY = offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() })
-                            offX = (curX + drag.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-                            offY = (curY + drag.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+                            val d = PopRects.radio?.let { slideDelta(it, drag.x, drag.y, PopRects.others("radio")) } ?: Offset(drag.x, drag.y)
+                            offX = (curX + d.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                            offY = (curY + d.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
                         }
                     }
                 ) {
@@ -3740,6 +3785,7 @@ fun MiniPlayerBox(
         val maxHPx = with(density) { maxHeight.toPx() }
         val maxWDpLocal = maxWidth
         var widthDp by MiniTvState.widthDp
+        DisposableEffect(Unit) { onDispose { PopRects.tv = null } }
         var offX by MiniTvState.offX
         var offY by MiniTvState.offY
         val widthPx = with(density) { widthDp.toPx() }
@@ -3753,6 +3799,11 @@ fun MiniPlayerBox(
             Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                 .width(widthDp)
+                .onGloballyPositioned { c ->
+                    val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
+                    PopRects.tv = r
+                    popSizeGuard("tv", r, widthDp.value) { widthDp = it.dp }
+                }
                 .shadow(10.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color(0xFFE8A04C))
@@ -3857,9 +3908,10 @@ fun MiniPlayerBox(
                             change.consume()
                             val curX = offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() })
                             val curY = offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() })
-                            offX = (curX + drag.x)
+                            val d = PopRects.tv?.let { slideDelta(it, drag.x, drag.y, PopRects.others("tv")) } ?: Offset(drag.x, drag.y)
+                            offX = (curX + d.x)
                                 .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-                            offY = (curY + drag.y)
+                            offY = (curY + d.y)
                                 .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
                         }
                     }
@@ -4803,6 +4855,7 @@ fun MusicMiniBox(
     var offX by MusicBoxState.offX
     var offY by MusicBoxState.offY
     var widthDpF by MusicBoxState.widthDpF
+    DisposableEffect(Unit) { onDispose { PopRects.music = null } }
     // The reels turn while the song plays and stop with it
     // (May, 2026-11-10: the music pop-up is a cassette player).
     var spin by remember { mutableStateOf(0f) }
@@ -4821,6 +4874,11 @@ fun MusicMiniBox(
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF1D1430))
                 .border(2.5.dp, Color(0xFF10131A), RoundedCornerShape(16.dp))
+                .onGloballyPositioned { c ->
+                    val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
+                    PopRects.music = r
+                    popSizeGuard("music", r, widthDpF) { widthDpF = it }
+                }
                 .padding(12.dp)
                 // Pinch to resize (May, 2026-11-10).
                 .pointerInput(Unit) {
@@ -4833,8 +4891,9 @@ fun MusicMiniBox(
                 Modifier.fillMaxWidth().pointerInput(Unit) {
                     detectDragGestures { change, drag ->
                         change.consume()
-                        offX += drag.x
-                        offY += drag.y
+                        val d = PopRects.music?.let { slideDelta(it, drag.x, drag.y, PopRects.others("music")) } ?: Offset(drag.x, drag.y)
+                        offX += d.x
+                        offY += d.y
                     }
                 },
                 verticalAlignment = Alignment.CenterVertically
