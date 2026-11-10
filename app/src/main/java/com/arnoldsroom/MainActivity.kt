@@ -970,11 +970,11 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
     // A living sky over the painting's own sky, drawn inside the
     // painting's coordinate system so it tracks on any screen. The
-    // shapes come from the paintings themselves (checked against them
+    // shapes come from the paintings themselves (pixel-measured
     // 2026-11-10): the glass ceiling is a wide trapezoid spanning the
     // whole top and narrowing downward, and the sun/moon sits in the
-    // upper-right panes — wide (0.79, 0.135), tall (0.66, 0.095) — not
-    // the middle, where an earlier version wrongly put the glare.
+    // upper-right panes — sun wide (0.793, 0.145), tall (0.776, 0.078);
+    // moon wide (0.802, 0.146), tall (0.774, 0.094).
     val stars = remember(tall) {
         val rnd = kotlin.random.Random(if (tall) 7 else 42)
         val n = if (tall) 18 else 22
@@ -1020,35 +1020,43 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             val cx = sunFx * size.width
             val cy = sunFy * size.height
             val breathe = 0.5f + 0.5f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
-            // The warm halo, breathing visibly this time.
-            val radius = size.width * 0.17f * (0.92f + 0.16f * breathe)
+            // The warm halo, breathing visibly this time. Drawn with
+            // BlendMode.Plus: plain alpha cream washed out completely
+            // over the already-bright painted sun (May: 'no lens flare'
+            // even when it was centered right) — adding light is what
+            // makes a flare read as a flare.
+            val radius = size.width * 0.19f * (0.92f + 0.16f * breathe)
             drawCircle(
                 brush = androidx.compose.ui.graphics.Brush.radialGradient(
                     listOf(
-                        Color(0xFFFFF9C4).copy(alpha = 0.34f + 0.18f * breathe),
+                        Color(0xFFFFF9C4).copy(alpha = 0.20f + 0.12f * breathe),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
                     radius = radius
                 ),
                 radius = radius,
-                center = Offset(cx, cy)
+                center = Offset(cx, cy),
+                blendMode = androidx.compose.ui.graphics.BlendMode.Plus
             )
-            // Four soft rays around the painted sunburst, swaying gently
-            // and stretching with the breath — the visible motion.
+            // Six rays reaching past the painted sunburst, swaying
+            // gently and stretching with the breath — the visible
+            // motion. Long and additive now, so they can be seen
+            // against the burst instead of hiding inside it.
             val sway = 10f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
-            val rayLen = size.width * (0.055f + 0.030f * breathe)
-            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.16f + 0.12f * breathe)
-            for (k in 0..3) {
-                val ang = Math.toRadians((sway + k * 45f).toDouble())
+            val rayLen = size.width * 0.15f * (0.90f + 0.25f * breathe)
+            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.30f)
+            for (k in 0..5) {
+                val ang = Math.toRadians((sway + k * 30f).toDouble())
                 val dx = kotlin.math.cos(ang).toFloat()
                 val dy = kotlin.math.sin(ang).toFloat()
                 drawLine(
                     rayCol,
                     Offset(cx - dx * rayLen * 0.35f, cy - dy * rayLen * 0.35f),
                     Offset(cx + dx * rayLen, cy + dy * rayLen),
-                    strokeWidth = 3.2f * scaleF,
-                    cap = StrokeCap.Round
+                    strokeWidth = 6f * scaleF,
+                    cap = StrokeCap.Round,
+                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus
                 )
             }
             // Lens ghosts on the sun-through-center line, drifting a
@@ -1057,8 +1065,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             val dirX = 0.5f - sunFx
             val dirY = 0.5f - sunFy
             listOf(
-                Triple(0.62f, 0.075f, 24f),
-                Triple(1.05f, 0.050f, 14f)
+                Triple(0.62f, 0.13f, 30f),
+                Triple(1.05f, 0.09f, 18f)
             ).forEach { (k, alpha, rad) ->
                 val drift = (breathe - 0.5f) * 0.012f
                 drawCircle(
@@ -1308,13 +1316,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     )
     val tallSpots = listOf(
         Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
-        Hotspot(0.125f, 0.430f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.375f, 0.385f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.640f, 0.407f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
-        Hotspot(0.535f, 0.450f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.135f, 0.465f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.390f, 0.420f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.648f, 0.435f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.555f, 0.495f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.700f, 0.548f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.905f, 0.462f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
