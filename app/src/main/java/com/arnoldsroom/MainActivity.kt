@@ -159,6 +159,27 @@ val CartoonFont = FontFamily(
     Font(R.font.baloo2, FontWeight.Bold)
 )
 
+fun cartoonTypography(): Typography {
+    val b = Typography()
+    return Typography(
+        displayLarge = b.displayLarge.copy(fontFamily = CartoonFont),
+        displayMedium = b.displayMedium.copy(fontFamily = CartoonFont),
+        displaySmall = b.displaySmall.copy(fontFamily = CartoonFont),
+        headlineLarge = b.headlineLarge.copy(fontFamily = CartoonFont),
+        headlineMedium = b.headlineMedium.copy(fontFamily = CartoonFont),
+        headlineSmall = b.headlineSmall.copy(fontFamily = CartoonFont),
+        titleLarge = b.titleLarge.copy(fontFamily = CartoonFont),
+        titleMedium = b.titleMedium.copy(fontFamily = CartoonFont),
+        titleSmall = b.titleSmall.copy(fontFamily = CartoonFont),
+        bodyLarge = b.bodyLarge.copy(fontFamily = CartoonFont),
+        bodyMedium = b.bodyMedium.copy(fontFamily = CartoonFont),
+        bodySmall = b.bodySmall.copy(fontFamily = CartoonFont),
+        labelLarge = b.labelLarge.copy(fontFamily = CartoonFont),
+        labelMedium = b.labelMedium.copy(fontFamily = CartoonFont),
+        labelSmall = b.labelSmall.copy(fontFamily = CartoonFont)
+    )
+}
+
 // ---------- Data ----------
 data class VideoItem(
     val id: Long,
@@ -476,7 +497,7 @@ fun ArnoldsRoomApp() {
         screen = if (screen is Screen.Player) Screen.Library(Filter.ALL) else Screen.Room
     }
 
-    MaterialTheme(typography = Typography(defaultFontFamily = CartoonFont)) {
+    MaterialTheme(typography = cartoonTypography()) {
     Box(Modifier.fillMaxSize().background(RoomDark)) {
         AnimatedContent(
             targetState = screen,
