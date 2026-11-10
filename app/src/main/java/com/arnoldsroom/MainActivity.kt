@@ -711,6 +711,11 @@ fun ArnoldsRoomApp() {
             try {
                 context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
             } catch (e: Exception) { }
+            // The video she tapped takes the room's sound over
+            // completely — the Plaza stream stops too, the same
+            // takeover her songs and the radio already do to each
+            // other.
+            if (radioActive) stopRadio()
             // Mark her songs paused right away too: the video players
             // hush themselves while MusicState.playing reads true, and
             // waiting for the service to report back could leave the
@@ -2626,9 +2631,20 @@ fun PlayerScreen(
         }
     }
     var isPlaying by remember { mutableStateOf(true) }
-    // The Plaza stream takes over the room's sound (May, 2026-11-10):
-    // when the radio starts, this video pauses.
-    LaunchedEffect(radioPause) { if (radioPause) try { exo.pause() } catch (e: Exception) { } }
+    // Takeovers (May, 2026-11-10): the radio or one of her songs
+    // starting hushes this video — and when the takeover clears, a
+    // video she tapped to play starts again on its own, so a tapped
+    // video always auto-plays. A pause she makes herself (button or
+    // sleep timer) clears `hushed`, cancelling the auto-resume.
+    var hushed by remember { mutableStateOf(false) }
+    LaunchedEffect(radioPause) {
+        if (radioPause) {
+            if (exo.isPlaying) { hushed = true; try { exo.pause() } catch (e: Exception) { } }
+        } else if (hushed) {
+            hushed = false
+            try { exo.play() } catch (e: Exception) { }
+        }
+    }
     var position by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
     var index by remember { mutableStateOf(startIndex) }
@@ -2689,6 +2705,7 @@ fun PlayerScreen(
                 if (left <= 0) break
                 delay(1000)
             }
+            hushed = false
             exo.pause()
             sleepChoice = 0
             sleepLeftMs = 0L
@@ -2974,7 +2991,7 @@ fun PlayerScreen(
                             Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color.White, modifier = Modifier.size(30.dp))
                         }
                         IconButton(
-                            onClick = { if (exo.isPlaying) exo.pause() else exo.play() },
+                            onClick = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() },
                             modifier = Modifier.size(68.dp).clip(CircleShape).background(RoomOrange)
                         ) {
                             Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -3230,8 +3247,18 @@ fun MiniPlayerBox(
     }
     var index by remember { mutableStateOf(startIndex) }
     var isPlaying by remember { mutableStateOf(true) }
-    // Same takeover as the full player: the radio pauses this video.
-    LaunchedEffect(radioPause) { if (radioPause) try { exo.pause() } catch (e: Exception) { } }
+    // Same takeover as the full player, two-way like it: hushed by
+    // the radio/a song, auto-resumes when the takeover clears,
+    // unless she paused it herself.
+    var hushed by remember { mutableStateOf(false) }
+    LaunchedEffect(radioPause) {
+        if (radioPause) {
+            if (exo.isPlaying) { hushed = true; try { exo.pause() } catch (e: Exception) { } }
+        } else if (hushed) {
+            hushed = false
+            try { exo.play() } catch (e: Exception) { }
+        }
+    }
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
@@ -3338,7 +3365,7 @@ fun MiniPlayerBox(
                 Box(
                     Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { if (exo.isPlaying) exo.pause() else exo.play() }
+                            onTap = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() }
                         )
                     }
                 )
@@ -3397,7 +3424,7 @@ fun MiniPlayerBox(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     "Play or pause", tint = RoomYellow,
                     modifier = Modifier.size(18.dp).combinedClickable(
-                        onClick = { if (exo.isPlaying) exo.pause() else exo.play() }
+                        onClick = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() }
                     )
                 )
                 Spacer(Modifier.weight(1f))
