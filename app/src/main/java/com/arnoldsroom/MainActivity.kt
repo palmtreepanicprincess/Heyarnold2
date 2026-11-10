@@ -775,6 +775,7 @@ fun ArnoldsRoomApp() {
                 onOpenRadio = { showRadio = true },
                 fxOn = fxOn,
                 onToggleFx = { fxOn = !fxOn },
+                doorsOpen = doorGone,
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -932,16 +933,16 @@ fun ArnoldsRoomApp() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
-                    Modifier.size(46.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                    Modifier.size(38.dp).shadow(4.dp, CircleShape).clip(CircleShape)
                         .background(Color(0xCC10131A))
-                        .border(2.5.dp, RoomYellow, CircleShape),
+                        .border(1.8.dp, RoomYellow, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         if (musicOn) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
                         if (musicOn) "Pause music" else "Play music",
                         tint = if (musicOn) RoomYellow else RoomTextDim,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(Modifier.height(2.dp))
@@ -952,27 +953,27 @@ fun ArnoldsRoomApp() {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xAA10131A))
+                        .background(Color(0x8810131A))
                         .padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
             // The effects button rides beside it on the doors too.
             Column(
-                Modifier.align(Alignment.TopStart).padding(start = 74.dp, top = 12.dp)
+                Modifier.align(Alignment.TopStart).padding(start = 64.dp, top = 12.dp)
                     .clickable { fxOn = !fxOn },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
-                    Modifier.size(46.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                    Modifier.size(38.dp).shadow(4.dp, CircleShape).clip(CircleShape)
                         .background(Color(0xCC10131A))
-                        .border(2.5.dp, RoomSky, CircleShape),
+                        .border(1.8.dp, RoomSky, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         if (fxOn) Icons.Filled.Star else Icons.Filled.StarBorder,
                         if (fxOn) "Turn effects off" else "Turn effects on",
                         tint = if (fxOn) RoomYellow else RoomTextDim,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
                 Spacer(Modifier.height(2.dp))
@@ -983,7 +984,7 @@ fun ArnoldsRoomApp() {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xAA10131A))
+                        .background(Color(0x8810131A))
                         .padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
@@ -1379,7 +1380,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
@@ -1400,7 +1401,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.815f, 0.415f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.130f, 0.375f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     val tallSpots = listOf(
         Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
@@ -1411,7 +1412,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.795f, 0.400f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.145f, 0.360f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -1656,16 +1657,17 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(12.dp)
+                .alpha(if (doorsOpen) 1f else 0f)
                 .combinedClickable(onClick = onToggleMusic),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 Modifier
-                    .size(46.dp)
-                    .shadow(6.dp, CircleShape)
+                    .size(38.dp)
+                    .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
-                    .border(2.5.dp, RoomYellow, CircleShape),
+                    .border(1.8.dp, RoomYellow, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (musicCrop != null) {
@@ -1682,7 +1684,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                         if (on) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
                         if (on) "Pause music" else "Play music",
                         tint = if (on) RoomYellow else RoomTextDim,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1694,7 +1696,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xAA10131A))
+                    .background(Color(0x8810131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
@@ -1704,17 +1706,18 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = 74.dp, top = 12.dp)
+                .padding(start = 64.dp, top = 12.dp)
+                .alpha(if (doorsOpen) 1f else 0f)
                 .combinedClickable(onClick = onToggleFx),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 Modifier
-                    .size(46.dp)
-                    .shadow(6.dp, CircleShape)
+                    .size(38.dp)
+                    .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
-                    .border(2.5.dp, RoomSky, CircleShape),
+                    .border(1.8.dp, RoomSky, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (musicCrop != null) {
@@ -1731,7 +1734,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                         if (on) Icons.Filled.Star else Icons.Filled.StarBorder,
                         if (on) "Turn effects off" else "Turn effects on",
                         tint = if (on) RoomYellow else RoomTextDim,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1743,7 +1746,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xAA10131A))
+                    .background(Color(0x8810131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
@@ -1751,16 +1754,17 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(12.dp)
+                .alpha(if (doorsOpen) 1f else 0f)
                 .combinedClickable(onClick = onToggleNight),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 Modifier
-                    .size(46.dp)
-                    .shadow(6.dp, CircleShape)
+                    .size(38.dp)
+                    .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(if (dayNightCrop != null) Color.Transparent else Color(0xCC10131A))
-                    .border(2.5.dp, Color(0xFFFF8F00), CircleShape),
+                    .border(1.8.dp, Color(0xFFFF8F00), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (dayNightCrop != null) {
@@ -1776,7 +1780,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     Icon(
                         if (n) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                         if (n) "Day" else "Night",
-                        tint = RoomYellow, modifier = Modifier.size(22.dp)
+                        tint = RoomYellow, modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1788,7 +1792,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xAA10131A))
+                    .background(Color(0x8810131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
