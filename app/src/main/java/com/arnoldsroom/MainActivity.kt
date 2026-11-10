@@ -611,6 +611,28 @@ fun slideDelta(cur: Rect, dx: Float, dy: Float, others: List<Rect>): Offset {
     return Offset.Zero
 }
 
+fun popNudge(cur: Rect, others: List<Rect>, gap: Float = 12f): Offset {
+    var r = cur
+    var dx = 0f
+    var dy = 0f
+    repeat(4) {
+        val o = others.firstOrNull {
+            r.left < it.right + gap && r.right > it.left - gap && r.top < it.bottom + gap && r.bottom > it.top - gap
+        } ?: return Offset(dx, dy)
+        val pushLeft = r.right + gap - o.left
+        val pushRight = o.right + gap - r.left
+        val pushUp = r.bottom + gap - o.top
+        val pushDown = o.bottom + gap - r.top
+        when (minOf(pushLeft, pushRight, pushUp, pushDown)) {
+            pushLeft -> { dx -= pushLeft; r = r.translate(Offset(-pushLeft, 0f)) }
+            pushRight -> { dx += pushRight; r = r.translate(Offset(pushRight, 0f)) }
+            pushUp -> { dy -= pushUp; r = r.translate(Offset(0f, -pushUp)) }
+            else -> { dy += pushDown; r = r.translate(Offset(0f, pushDown)) }
+        }
+    }
+    return Offset(dx, dy)
+}
+
 fun popSizeGuard(self: String, rect: Rect, curW: Float, apply: (Float) -> Unit) {
     val last = PopRects.lastGood[self] ?: curW
     if (rect.hitsAny(PopRects.others(self))) {
@@ -3571,6 +3593,11 @@ fun RadioPlayerBox(
                     val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
                     PopRects.radio = r
                     popSizeGuard("radio", r, widthDpF) { widthDpF = it }
+                    val n = popNudge(r, PopRects.others("radio"))
+                    if (n != Offset.Zero) {
+                        offX = (r.left + n.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                        offY = (r.top + n.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+                    }
                 }
         ) {
             // Telescopic antenna, tipped up from the cabinet's corner.
@@ -3874,7 +3901,7 @@ fun MiniPlayerBox(
         val heightPx = widthPx / videoAspect + with(density) { 98.dp.toPx() }
         val x = (offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() }))
             .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-        val y = (offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() }))
+        val y = (offY ?: with(density) { 96.dp.toPx() })
             .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
 
         Column(
@@ -3885,6 +3912,11 @@ fun MiniPlayerBox(
                     val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
                     PopRects.tv = r
                     popSizeGuard("tv", r, widthDp.value) { widthDp = it.dp }
+                    val n = popNudge(r, PopRects.others("tv"))
+                    if (n != Offset.Zero) {
+                        offX = (r.left + n.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                        offY = (r.top + n.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+                    }
                 }
                 .shadow(10.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
@@ -3989,7 +4021,7 @@ fun MiniPlayerBox(
                         detectDragGestures { change, drag ->
                             change.consume()
                             val curX = offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() })
-                            val curY = offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() })
+                            val curY = offY ?: with(density) { 96.dp.toPx() }
                             val d = PopRects.tv?.let { slideDelta(it, drag.x, drag.y, PopRects.others("tv")) } ?: Offset(drag.x, drag.y)
                             offX = (curX + d.x)
                                 .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
@@ -4960,6 +4992,8 @@ fun MusicMiniBox(
                     val r = Rect(c.positionInRoot(), ComposeSize(c.size.width.toFloat(), c.size.height.toFloat()))
                     PopRects.music = r
                     popSizeGuard("music", r, widthDpF) { widthDpF = it }
+                    val n = popNudge(r, PopRects.others("music"))
+                    if (n != Offset.Zero) { offX += n.x; offY += n.y }
                 }
                 .padding(12.dp)
                 // Pinch to resize (May, 2026-11-10).
