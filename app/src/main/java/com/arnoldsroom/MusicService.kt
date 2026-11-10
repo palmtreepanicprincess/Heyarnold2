@@ -44,6 +44,11 @@ object MusicState {
     var queue by mutableStateOf<List<SongItem>>(emptyList())
     var index by mutableStateOf(0)
     var playing by mutableStateOf(false)
+    // True while the player INTENDS to be playing (playWhenReady),
+    // including the buffering dips between tracks when `playing`
+    // flickers false. The room ambience watches this so it never
+    // jumps in over a song that is only mid-breath (May, 2026-11-10).
+    var wantsPlay by mutableStateOf(false)
     var hasMedia by mutableStateOf(false)
     var positionMs by mutableStateOf(0L)
     var durationMs by mutableStateOf(0L)
@@ -229,9 +234,14 @@ class MusicService : Service() {
                 postNotification()
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                MusicState.wantsPlay = playWhenReady
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
                     MusicState.playing = false
+                    MusicState.wantsPlay = false
                     postNotification()
                 }
                 if (playbackState == Player.STATE_READY) {
@@ -244,7 +254,7 @@ class MusicService : Service() {
                 // A file the phone can't decode: skip it rather than
                 // dying in silence, when there's somewhere to skip to.
                 val cur = player ?: return
-                if (cur.hasNextMediaItem()) cur.seekToNextMediaItem() else MusicState.playing = false
+                if (cur.hasNextMediaItem()) cur.seekToNextMediaItem() else { MusicState.playing = false; MusicState.wantsPlay = false }
             }
         })
         player = p
@@ -301,6 +311,7 @@ class MusicService : Service() {
                     p.prepare()
                     p.play()
                     MusicState.hasMedia = true
+                    MusicState.wantsPlay = true
                     MusicState.index = idx
                     MusicState.durationMs = q[idx].durationMs
                     lastSongId = q[idx].id
@@ -383,6 +394,7 @@ class MusicService : Service() {
         try { player?.release() } catch (e: Exception) { }
         player = null
         MusicState.playing = false
+        MusicState.wantsPlay = false
         MusicState.hasMedia = false
         MusicState.queue = emptyList()
         MusicState.index = 0

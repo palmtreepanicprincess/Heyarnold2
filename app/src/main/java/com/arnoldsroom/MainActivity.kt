@@ -66,6 +66,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -599,6 +601,15 @@ object MiniTvState {
     val offX = mutableStateOf<Float?>(null)
     val offY = mutableStateOf<Float?>(null)
     val widthDp = mutableStateOf(216.dp)
+    // The video's shape lives here too (May, 2026-11-10): it used
+    // to reset to 16:9 every time the TV stepped aside for a menu,
+    // so the box came back the wrong height until the player
+    // reported in again.
+    val aspect = mutableStateOf(16f / 9f)
+    // Set once the TV has opened for real, so returning from a
+    // menu restores it at full size instead of replaying the
+    // shrink-in entrance (May, 2026-11-10).
+    val everOpened = mutableStateOf(false)
 }
 object MusicBoxState {
     val offX = mutableStateOf(0f)
@@ -934,7 +945,7 @@ fun ArnoldsRoomApp() {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
+                    if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && !MusicState.wantsPlay && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
                 }
                 Lifecycle.Event.ON_STOP -> { pauseMusic() }
                 else -> { }
@@ -943,7 +954,7 @@ fun ArnoldsRoomApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing, MusicState.wantsPlay) {
         // The room song is the app's ambience (May, 2026-11-10): it
         // keeps playing while she browses — the libraries, shelves,
         // search, stats, settings — and only yields when something
@@ -951,7 +962,7 @@ fun ArnoldsRoomApp() {
         // video (the full video player and the music player's own
         // screen stay quiet for whatever is loaded there). It still
         // waits until the doors have fully opened first.
-        if (musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+        if (musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing && !MusicState.wantsPlay &&
             screen !is Screen.Player && screen !is Screen.MusicPlayer
         ) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
@@ -962,13 +973,32 @@ fun ArnoldsRoomApp() {
     // couple of seconds and restart the song if anything stopped it
     // along the way, so it can never silently go missing from a
     // screen where it belongs.
-    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
-        val wanted = musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing, MusicState.wantsPlay) {
+        val wanted = musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing && !MusicState.wantsPlay &&
             screen !is Screen.Player && screen !is Screen.MusicPlayer
         if (wanted) {
             while (true) {
                 if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                    try { if (music?.isPlaying != true) startMusic() } catch (e: Exception) { }
+                    var need = false
+                    try { need = music?.isPlaying != true } catch (e: Exception) { }
+                    if (need) {
+                        // Confirm after a breath before starting
+                        // (May, 2026-11-10): a song or stream can
+                        // read as idle for a moment while it buffers
+                        // between tracks, and the room song must not
+                        // jump in over it — that was the leak she
+                        // heard once or twice.
+                        delay(1200)
+                        val stillWanted = musicOn && miniQueue == null && doorGone &&
+                            !RadioState.playing && !RadioState.buffering &&
+                            !MusicState.playing && !MusicState.wantsPlay &&
+                            screen !is Screen.Player && screen !is Screen.MusicPlayer
+                        var stillNeed = false
+                        try { stillNeed = music?.isPlaying != true } catch (e: Exception) { }
+                        if (stillWanted && stillNeed) {
+                            try { startMusic() } catch (e: Exception) { }
+                        }
+                    }
                 }
                 delay(2000)
             }
@@ -1119,8 +1149,22 @@ fun ArnoldsRoomApp() {
         AnimatedContent(
             targetState = screen,
             transitionSpec = {
-                (fadeIn(tween(240)) + scaleIn(initialScale = 0.985f, animationSpec = tween(240))) togetherWith
-                    fadeOut(tween(160))
+                // More motion, especially around the players
+                // (May, 2026-11-10): stepping into the video or
+                // music player, it rises up over the room; stepping
+                // back out, it sinks away. Everything else keeps
+                // the gentle fade-and-grow.
+                when {
+                    targetState is Screen.Player || targetState is Screen.MusicPlayer ->
+                        (slideInVertically(animationSpec = tween(320)) { h -> h / 3 } + fadeIn(tween(320))) togetherWith
+                            fadeOut(tween(180))
+                    initialState is Screen.Player || initialState is Screen.MusicPlayer ->
+                        fadeIn(tween(260)) togetherWith
+                            (slideOutVertically(animationSpec = tween(300)) { h -> h / 3 } + fadeOut(tween(300)))
+                    else ->
+                        (fadeIn(tween(240)) + scaleIn(initialScale = 0.985f, animationSpec = tween(240))) togetherWith
+                            fadeOut(tween(160))
+                }
             },
             label = "screen"
         ) { s ->
@@ -3668,7 +3712,10 @@ fun RadioPlayerBox(
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
         var widthDpF by RadioBoxState.widthDpF
-        DisposableEffect(Unit) { onDispose { PopRects.radio = null } }
+        DisposableEffect(Unit) {
+            PopRects.lastGood["radio"] = widthDpF
+            onDispose { PopRects.radio = null }
+        }
         val widthDp = widthDpF.dp
         val widthPx = with(density) { widthDp.toPx() }
         val heightPx = widthPx * (268f / 292f) + with(density) { 30.dp.toPx() }
@@ -3930,10 +3977,16 @@ fun MiniPlayerBox(
     }
     // The pop-up TV takes the video's own shape (May, 2026-11-10):
     // a 4:3 episode gets a 4:3 TV, a 16:9 movie a wide one.
-    var videoAspect by remember { mutableStateOf(16f / 9f) }
-    val appear = remember { Animatable(0f) }
+    var videoAspect by MiniTvState.aspect
+    // The shrink-in entrance plays on a genuinely new open only;
+    // a TV restored from a menu trip is simply back (May,
+    // 2026-11-10 — it kept coming back from Settings smaller).
+    val appear = remember { Animatable(if (MiniTvState.everOpened.value) 1f else 0f) }
     LaunchedEffect(Unit) {
-        appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
+        if (!MiniTvState.everOpened.value) {
+            MiniTvState.everOpened.value = true
+            appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
+        }
     }
 
     fun saveNow() {
@@ -3986,7 +4039,14 @@ fun MiniPlayerBox(
         val maxHPx = with(density) { maxHeight.toPx() }
         val maxWDpLocal = maxWidth
         var widthDp by MiniTvState.widthDp
-        DisposableEffect(Unit) { onDispose { PopRects.tv = null } }
+        DisposableEffect(Unit) {
+            // Returning is not resizing (May, 2026-11-10): seed the
+            // collision guard with the restored width, so a stale
+            // smaller size from earlier can't snap the TV back
+            // down when it reappears next to its neighbors.
+            PopRects.lastGood["tv"] = widthDp.value
+            onDispose { PopRects.tv = null }
+        }
         var offX by MiniTvState.offX
         var offY by MiniTvState.offY
         val widthPx = with(density) { widthDp.toPx() }
@@ -5145,7 +5205,10 @@ fun MusicMiniBox(
     var offX by MusicBoxState.offX
     var offY by MusicBoxState.offY
     var widthDpF by MusicBoxState.widthDpF
-    DisposableEffect(Unit) { onDispose { PopRects.music = null } }
+    DisposableEffect(Unit) {
+        PopRects.lastGood["music"] = widthDpF
+        onDispose { PopRects.music = null }
+    }
     // The reels turn while the song plays and stop with it
     // (May, 2026-11-10: the music pop-up is a cassette player).
     var spin by remember { mutableStateOf(0f) }
