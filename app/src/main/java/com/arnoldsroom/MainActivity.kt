@@ -90,6 +90,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.ui.draw.rotate
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionDisabled
@@ -273,6 +277,8 @@ sealed class Screen {
     object Search : Screen()
     object Settings : Screen()
     object Stats : Screen()
+    object MusicLibrary : Screen()
+    object MusicPlayer : Screen()
     data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String) : Screen()
 }
 
@@ -461,6 +467,63 @@ fun videoPermission(): String =
     if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO
     else Manifest.permission.READ_EXTERNAL_STORAGE
 
+// Her own music files, for the music player (May, 2026-11-10): the
+// audio side of MediaStore, songs only, sorted by title.
+fun loadSongs(resolver: ContentResolver): List<SongItem> {
+    val out = mutableListOf<SongItem>()
+    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+    val projection = arrayOf(
+        MediaStore.Audio.Media._ID,
+        MediaStore.Audio.Media.TITLE,
+        MediaStore.Audio.Media.ARTIST,
+        MediaStore.Audio.Media.DURATION
+    )
+    resolver.query(
+        collection, projection,
+        "${MediaStore.Audio.Media.IS_MUSIC} != 0", null,
+        "${MediaStore.Audio.Media.TITLE} ASC"
+    )?.use { c ->
+        val idI = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+        val tI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+        val aI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+        val dI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+        while (c.moveToNext()) {
+            val id = c.getLong(idI)
+            val title = c.getString(tI)?.takeIf { it.isNotBlank() } ?: "Unknown title"
+            val artist = c.getString(aI)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown artist"
+            out.add(
+                SongItem(
+                    id = id,
+                    title = title,
+                    artist = artist,
+                    durationMs = c.getLong(dI),
+                    uri = Uri.withAppendedPath(collection, id.toString()).toString()
+                )
+            )
+        }
+    }
+    return out
+}
+
+fun audioPermission(): String =
+    if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
+    else Manifest.permission.READ_EXTERNAL_STORAGE
+
+// Send an order to the music service. Queue starts go through the
+// foreground-service door (Android insists, since the service must
+// show its notification right away); the small orders can use a
+// plain start once the service exists.
+fun musicAction(context: Context, action: String, build: Intent.() -> Unit = {}) {
+    try {
+        val intent = Intent(context, MusicService::class.java).setAction(action).apply(build)
+        if (action == MusicService.ACTION_PLAY_QUEUE) {
+            ContextCompat.startForegroundService(context, intent)
+        } else {
+            context.startService(intent)
+        }
+    } catch (e: Exception) { }
+}
+
 object PipControl {
     var shouldEnter by mutableStateOf(false)
     var inPip by mutableStateOf(false)
@@ -620,6 +683,11 @@ fun ArnoldsRoomApp() {
     }
     fun startRadio() {
         pauseMusic()
+        // The radio takes the room's sound over completely: her own
+        // music player pauses too.
+        try {
+            context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
+        } catch (e: Exception) { }
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -632,11 +700,40 @@ fun ArnoldsRoomApp() {
             )
         } catch (e: Exception) { }
     }
+    // ----- Her own music player (May, 2026-11-10): the joystick on
+    // the rug opens a full music library + player for the songs on
+    // her phone, with a pop-up mini player like the video one. The
+    // playback itself lives in MusicService; starting a song takes
+    // over the room's sound (radio stops, room song and videos
+    // pause), and starting a video or the radio pauses it back.
+    var showMusicMini by remember { mutableStateOf(true) }
+    fun playSongs(queue: List<SongItem>, index: Int) {
+        if (radioActive) stopRadio()
+        pauseMusic()
+        MusicState.queue = queue
+        val startPos = if (queue.isNotEmpty()) prefs.getLong("music_pos_${queue[index].id}", 0L) else 0L
+        musicAction(context, MusicService.ACTION_PLAY_QUEUE) {
+            putExtra(MusicService.EXTRA_INDEX, index)
+            putExtra(MusicService.EXTRA_POS, startPos)
+        }
+        showMusicMini = true
+        screen = Screen.MusicPlayer
+    }
+    LaunchedEffect(MusicState.playing) {
+        if (MusicState.playing && radioActive) stopRadio()
+    }
+    LaunchedEffect(screen) {
+        if (screen is Screen.Player) {
+            try {
+                context.startService(Intent(context, MusicService::class.java).setAction(MusicService.ACTION_PAUSE))
+            } catch (e: Exception) { }
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone && !radioActive) startMusic()
+                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -644,10 +741,10 @@ fun ArnoldsRoomApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive) {
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
         // The song waits until the doors have fully opened — no music
         // while you're still standing outside knocking.
-        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone && !radioActive) {
+        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
@@ -754,7 +851,11 @@ fun ArnoldsRoomApp() {
     }
 
     BackHandler(enabled = screen !is Screen.Room) {
-        screen = if (screen is Screen.Player) Screen.Library(Filter.ALL) else Screen.Room
+        screen = when {
+            screen is Screen.Player -> Screen.Library(Filter.ALL)
+            screen is Screen.MusicPlayer -> Screen.MusicLibrary
+            else -> Screen.Room
+        }
     }
 
     val libTick = libVersion
@@ -778,7 +879,7 @@ fun ArnoldsRoomApp() {
                 fxOn = fxOn,
                 onToggleFx = { fxOn = !fxOn },
                 doorsOpen = doorGone,
-                onHotspot = { dest -> go(dest) },
+                onHotspot = { dest -> go(dest, needsVideos = dest !is Screen.MusicLibrary) },
                 onShuffle = {
                     pauseMusic()
                     if (!granted) {
@@ -887,6 +988,20 @@ fun ArnoldsRoomApp() {
                 showsCount = detectShows(videos, ::catOf).size,
                 onRoom = { screen = Screen.Room }
             )
+            is Screen.MusicLibrary -> MusicLibraryScreen(
+                prefs = prefs,
+                onPlaySong = { q, idx -> playSongs(q, idx) },
+                onOpenPlayer = { screen = Screen.MusicPlayer },
+                onRoom = { screen = Screen.Room }
+            )
+            is Screen.MusicPlayer -> MusicPlayerScreen(
+                prefs = prefs,
+                onBack = { screen = Screen.MusicLibrary },
+                onShrink = {
+                    showMusicMini = true
+                    screen = Screen.Room
+                }
+            )
             is Screen.Player -> PlayerScreen(
                 queue = s.queue,
                 startIndex = s.startIndex,
@@ -898,7 +1013,7 @@ fun ArnoldsRoomApp() {
                     miniIndex = idx
                     screen = Screen.Room
                 },
-                radioPause = radioActive
+                radioPause = radioActive || MusicState.playing
             )
             }
         }
@@ -913,7 +1028,7 @@ fun ArnoldsRoomApp() {
                         screen = Screen.Player(q, idx, "Mini player")
                     },
                     onClose = { miniQueue = null },
-                    radioPause = radioActive
+                    radioPause = radioActive || MusicState.playing
                 )
             }
         }
@@ -923,6 +1038,12 @@ fun ArnoldsRoomApp() {
                 buffering = radioBuffering,
                 onToggle = { if (radioActive) stopRadio() else startRadio() },
                 onClose = { showRadio = false }
+            )
+        }
+        if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini) {
+            MusicMiniBox(
+                onExpand = { screen = Screen.MusicPlayer },
+                onClose = { showMusicMini = false }
             )
         }
         if (!doorGone) {
@@ -1392,7 +1513,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.31f, 0.78f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
     )
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
@@ -1404,18 +1526,20 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.130f, 0.350f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.130f, 0.350f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
     )
     val tallSpots = listOf(
-        Hotspot(0.505f, 0.125f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
-        Hotspot(0.135f, 0.465f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.378f, 0.408f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.660f, 0.428f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
-        Hotspot(0.545f, 0.512f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
-        Hotspot(0.068f, 0.558f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.732f, 0.582f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.912f, 0.468f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.145f, 0.360f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.505f, 0.105f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.360f, 0.392f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.678f, 0.412f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.925f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.120f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -3258,6 +3382,460 @@ fun MiniPlayerBox(
                         onClick = { saveNow(); onClose() }
                     )
                 )
+            }
+        }
+    }
+}
+
+
+// ---------- Her music: library, full player, pop-up mini player ----------
+// (May, 2026-11-10) The joystick ring on the rug opens a music
+// player for the audio files on her phone, built to the video
+// player's standard: search, favorites, shuffle, repeat, speed,
+// sleep timer, resume positions, favorite-moment bookmarks — plus a
+// draggable pop-up player, and background play through MusicService.
+
+private val MusicLime = Color(0xFF76FF03)
+
+@Composable
+fun MusicLibraryScreen(
+    prefs: SharedPreferences,
+    onPlaySong: (List<SongItem>, Int) -> Unit,
+    onOpenPlayer: () -> Unit,
+    onRoom: () -> Unit
+) {
+    val context = LocalContext.current
+    var audioGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, audioPermission()) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var query by remember { mutableStateOf("") }
+    var favOnly by remember { mutableStateOf(false) }
+    var favTick by remember { mutableStateOf(0) }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        audioGranted = ok
+    }
+    // Subscribes this screen to heart toggles (favorites live in
+    // prefs, not state, so the tick is what recomposes the list).
+    val favTickSnapshot = favTick
+    LaunchedEffect(audioGranted) {
+        if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context.contentResolver) }
+    }
+    fun isFav(s: SongItem) = prefs.getBoolean("music_fav_${s.id}", false)
+    val shown = songs.filter { s ->
+        (!favOnly || isFav(s)) &&
+            (query.isBlank() || s.title.contains(query, true) || s.artist.contains(query, true))
+    }
+    Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onRoom) {
+                Icon(Icons.Filled.ArrowBack, "Back to the room", tint = RoomTextDim)
+            }
+            Text("Music", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("${songs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+        }
+        if (!audioGranted) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "The music player needs permission to see the audio files on your phone.",
+                color = RoomTextDim, fontSize = 15.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { permLauncher.launch(audioPermission()) }) { Text("Allow music access") }
+            return@Column
+        }
+        if (MusicState.hasMedia) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(MusicLime.copy(alpha = 0.12f))
+                    .border(1.5.dp, MusicLime.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable { onOpenPlayer() }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.MusicNote, null, tint = MusicLime, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        MusicState.current?.title ?: "Now playing",
+                        color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        if (MusicState.playing) "Playing — tap to open the player" else "Paused — tap to open the player",
+                        color = RoomTextDim, fontSize = 12.sp
+                    )
+                }
+                IconButton(onClick = { musicAction(context, MusicService.ACTION_TOGGLE) }) {
+                    Icon(
+                        if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (MusicState.playing) "Pause" else "Play",
+                        tint = MusicLime
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search your music") },
+            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { if (songs.isNotEmpty()) onPlaySong(songs.shuffled(), 0) },
+                colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+            ) {
+                Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Shuffle all", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(10.dp))
+            TextButton(onClick = { favOnly = false }) {
+                Text("All", color = if (!favOnly) MusicLime else RoomTextDim, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = { favOnly = true }) {
+                Text("Favorites", color = if (favOnly) MusicLime else RoomTextDim, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        if (songs.isEmpty()) {
+            Text("No music files found on this phone yet.", color = RoomTextDim, fontSize = 15.sp)
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(shown, key = { it.id }) { s ->
+                val fav = isFav(s)
+                val saved = prefs.getLong("music_pos_${s.id}", 0L)
+                val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        val idx = shown.indexOf(s)
+                        if (idx >= 0) onPlaySong(shown, idx)
+                    }.padding(vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(42.dp).clip(CircleShape)
+                            .background(if (isCurrent) MusicLime.copy(alpha = 0.2f) else Color(0xFF232A33))
+                            .border(1.5.dp, if (isCurrent) MusicLime else Color(0xFF39424E), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.MusicNote, null,
+                            tint = if (isCurrent) MusicLime else RoomTextDim,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(11.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            s.title, color = if (isCurrent) MusicLime else Color.White,
+                            fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${s.artist} • ${fmtDur(s.durationMs)}" +
+                                if (saved > 10_000 && s.durationMs > 0 && saved < s.durationMs * 95 / 100)
+                                    " • left off at ${fmtDur(saved)}" else "",
+                            color = RoomTextDim, fontSize = 12.5.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = {
+                        prefs.edit().putBoolean("music_fav_${s.id}", !fav).apply()
+                        favTick++
+                    }) {
+                        Icon(
+                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            if (fav) "Unfavorite" else "Favorite",
+                            tint = if (fav) Color(0xFFF50057) else RoomTextDim
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MusicPlayerScreen(
+    prefs: SharedPreferences,
+    onBack: () -> Unit,
+    onShrink: () -> Unit
+) {
+    val context = LocalContext.current
+    val song = MusicState.current
+    var scrub by remember { mutableStateOf<Float?>(null) }
+    var markTick by remember { mutableStateOf(0) }
+    // Subscribes this screen to bookmark changes (they live in prefs).
+    val markTickSnapshot = markTick
+    Column(
+        Modifier.fillMaxSize().background(RoomDark).padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Filled.ArrowBack, "Back to the music library", tint = RoomTextDim)
+            }
+            Text("Now Playing", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onShrink) {
+                Icon(Icons.Filled.PictureInPictureAlt, "Pop-up player", tint = MusicLime)
+            }
+        }
+        if (song == null) {
+            Spacer(Modifier.height(40.dp))
+            Text("Nothing playing — pick a song from the library.", color = RoomTextDim, fontSize = 15.sp)
+            return@Column
+        }
+        Spacer(Modifier.height(14.dp))
+        // The disc turns as the song plays (a half-turn every six
+        // seconds) and freezes when paused — its angle is the play
+        // position itself, so no separate animation state can drift.
+        val angle = (MusicState.positionMs / 1000f * 30f) % 360f
+        Box(
+            Modifier.size(208.dp).shadow(12.dp, CircleShape).clip(CircleShape)
+                .background(Color(0xFF1A2118))
+                .border(3.dp, MusicLime, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier.size(168.dp).clip(CircleShape)
+                    .border(1.5.dp, MusicLime.copy(alpha = 0.35f), CircleShape)
+            )
+            Icon(
+                Icons.Filled.MusicNote, null, tint = MusicLime,
+                modifier = Modifier.size(92.dp).rotate(angle)
+            )
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(RoomDark)
+                    .border(2.dp, MusicLime, CircleShape)
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            song.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+        )
+        Text(song.artist, color = RoomTextDim, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(8.dp))
+        val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
+        Slider(
+            value = scrub ?: MusicState.positionMs.toFloat(),
+            onValueChange = { scrub = it },
+            onValueChangeFinished = {
+                scrub?.let { musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, it.toLong()) } }
+                scrub = null
+            },
+            valueRange = 0f..(dur.toFloat().coerceAtLeast(1f)),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(Modifier.fillMaxWidth()) {
+            Text(fmtDur((scrub?.toLong()) ?: MusicState.positionMs), color = RoomTextDim, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            Text(fmtDur(dur), color = RoomTextDim, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = {
+                musicAction(context, MusicService.ACTION_SET_SHUFFLE) {
+                    putExtra(MusicService.EXTRA_BOOL, !MusicState.shuffle)
+                }
+            }) {
+                Icon(
+                    Icons.Filled.Shuffle, "Shuffle",
+                    tint = if (MusicState.shuffle) MusicLime else RoomTextDim
+                )
+            }
+            IconButton(onClick = { musicAction(context, MusicService.ACTION_PREV) }) {
+                Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(32.dp))
+            }
+            IconButton(onClick = {
+                val p = (MusicState.positionMs - 10_000).coerceAtLeast(0L)
+                musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, p) }
+            }) {
+                Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color.White)
+            }
+            Box(
+                Modifier.size(66.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                    .background(MusicLime)
+                    .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    if (MusicState.playing) "Pause" else "Play",
+                    tint = Color(0xFF10131A), modifier = Modifier.size(36.dp)
+                )
+            }
+            IconButton(onClick = {
+                val p = MusicState.positionMs + 10_000
+                musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, p) }
+            }) {
+                Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = Color.White)
+            }
+            IconButton(onClick = { musicAction(context, MusicService.ACTION_NEXT) }) {
+                Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(32.dp))
+            }
+            IconButton(onClick = {
+                val next = (MusicState.repeatMode + 1) % 3
+                musicAction(context, MusicService.ACTION_SET_REPEAT) { putExtra(MusicService.EXTRA_INT, next) }
+            }) {
+                Icon(
+                    if (MusicState.repeatMode == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                    "Repeat",
+                    tint = if (MusicState.repeatMode > 0) MusicLime else RoomTextDim
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = {
+                val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+                val next = speeds.firstOrNull { it > MusicState.speed } ?: speeds.first()
+                musicAction(context, MusicService.ACTION_SET_SPEED) { putExtra(MusicService.EXTRA_FLOAT, next) }
+            }) {
+                Text("Speed ${MusicState.speed}×", color = RoomTextDim, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = {
+                val opts = listOf(0, 15, 30, 45, 60)
+                val next = opts.firstOrNull { it > MusicState.sleepMinutes } ?: 0
+                musicAction(context, MusicService.ACTION_SET_SLEEP) { putExtra(MusicService.EXTRA_INT, next) }
+            }) {
+                Icon(Icons.Filled.Bedtime, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    if (MusicState.sleepMinutes > 0) "Sleep ${MusicState.sleepMinutes}m" else "Sleep off",
+                    color = RoomTextDim, fontWeight = FontWeight.Bold
+                )
+            }
+            TextButton(onClick = {
+                val key = "mmarks_${song.id}"
+                val cur = prefs.getString(key, "")?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+                val updated = (cur + MusicState.positionMs).distinct().sorted()
+                prefs.edit().putString(key, updated.joinToString(",")).apply()
+                markTick++
+            }) {
+                Icon(Icons.Filled.BookmarkAdd, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Mark this spot", color = RoomTextDim, fontWeight = FontWeight.Bold)
+            }
+        }
+        val marks = prefs.getString("mmarks_${song.id}", "")?.split(",")
+            ?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+        if (marks.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text("Favorite moments", color = MusicLime, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                items(marks, key = { it }) { m ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, m) }
+                            if (!MusicState.playing) musicAction(context, MusicService.ACTION_TOGGLE)
+                        }.padding(vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Bookmarks, null, tint = MusicLime, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Text(fmtDur(m), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = {
+                            val key = "mmarks_${song.id}"
+                            val updated = marks.filter { it != m }
+                            prefs.edit().putString(key, updated.joinToString(",")).apply()
+                            markTick++
+                        }) {
+                            Icon(Icons.Filled.Delete, "Delete mark", tint = RoomTextDim)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MusicMiniBox(
+    onExpand: () -> Unit,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val song = MusicState.current ?: return
+    var offX by remember { mutableStateOf(0f) }
+    var offY by remember { mutableStateOf(0f) }
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(14.dp)
+                .offset { IntOffset(offX.toInt(), offY.toInt()) }
+                .width(274.dp)
+                .shadow(10.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF141A12))
+                .border(2.dp, MusicLime.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                .padding(12.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth().pointerInput(Unit) {
+                    detectDragGestures { change, drag ->
+                        change.consume()
+                        offX += drag.x
+                        offY += drag.y
+                    }
+                },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.MusicNote, null, tint = MusicLime, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("MUSIC", color = MusicLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
+                    modifier = Modifier.size(18.dp).clickable { onClose() }
+                )
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                song.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable { onExpand() }
+            )
+            Text(song.artist, color = RoomTextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
+            val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
+            LinearProgressIndicator(
+                progress = if (dur > 0) (MusicState.positionMs.toFloat() / dur).coerceIn(0f, 1f) else 0f,
+                color = MusicLime,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { musicAction(context, MusicService.ACTION_PREV) }) {
+                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White)
+                }
+                Box(
+                    Modifier.size(42.dp).clip(CircleShape).background(MusicLime)
+                        .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (MusicState.playing) "Pause" else "Play",
+                        tint = Color(0xFF10131A)
+                    )
+                }
+                IconButton(onClick = { musicAction(context, MusicService.ACTION_NEXT) }) {
+                    Icon(Icons.Filled.SkipNext, "Next", tint = Color.White)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(fmtDur(MusicState.positionMs), color = RoomTextDim, fontSize = 12.sp)
             }
         }
     }
