@@ -1029,7 +1029,7 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             drawCircle(
                 brush = androidx.compose.ui.graphics.Brush.radialGradient(
                     listOf(
-                        Color(0xFFFFF9C4).copy(alpha = 0.20f + 0.12f * breathe),
+                        Color(0xFFFFF9C4).copy(alpha = 0.11f + 0.06f * breathe),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
@@ -1044,8 +1044,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             // motion. Long and additive now, so they can be seen
             // against the burst instead of hiding inside it.
             val sway = 10f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
-            val rayLen = size.width * 0.15f * (0.90f + 0.25f * breathe)
-            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.30f)
+            val rayLen = size.width * 0.12f * (0.90f + 0.25f * breathe)
+            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.16f)
             for (k in 0..5) {
                 val ang = Math.toRadians((sway + k * 30f).toDouble())
                 val dx = kotlin.math.cos(ang).toFloat()
@@ -1054,7 +1054,7 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
                     rayCol,
                     Offset(cx - dx * rayLen * 0.35f, cy - dy * rayLen * 0.35f),
                     Offset(cx + dx * rayLen, cy + dy * rayLen),
-                    strokeWidth = 6f * scaleF,
+                    strokeWidth = 4.5f * scaleF,
                     cap = StrokeCap.Round,
                     blendMode = androidx.compose.ui.graphics.BlendMode.Plus
                 )
@@ -1065,8 +1065,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             val dirX = 0.5f - sunFx
             val dirY = 0.5f - sunFy
             listOf(
-                Triple(0.62f, 0.13f, 30f),
-                Triple(1.05f, 0.09f, 18f)
+                Triple(0.62f, 0.08f, 30f),
+                Triple(1.05f, 0.055f, 18f)
             ).forEach { (k, alpha, rad) ->
                 val drift = (breathe - 0.5f) * 0.012f
                 drawCircle(
@@ -1084,18 +1084,15 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
 
 @Composable
 fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, pulse: Float, onTap: () -> Unit) {
-    // The chip wears the room: a circle cut out of the painting itself,
-    // one-to-one, centered on the spot — so the button IS the thing it opens.
-    // Around it, just enough dressing to lift it off the wall: a soft glow
-    // in the spot's own color, a drop shadow, and a two-tone rim (a dark
-    // ink ring outside, the spot's color inside). The glow breathes with
-    // the room's pulse until she taps something.
-    val density = LocalDensity.current
+    // The chip is a clear ring on the painting itself (May, 2026-11-10):
+    // the circle's inside is transparent, so what you see in it is the
+    // room behind it — no crop to drift off its thing, ever. Around it,
+    // just enough dressing to lift it off the wall: a soft glow in the
+    // spot's own color, a drop shadow, and a two-tone rim (a dark ink
+    // ring outside, the spot's color inside). The glow breathes with
+    // the room's pulse until she taps something. (The art/imgWpx params
+    // are vestigial from the crop era; the corner toggles still crop.)
     val chipDp = if (compact) 52.dp else 68.dp
-    val frac = with(density) { chipDp.toPx() } / imgWpx.coerceAtLeast(1).toFloat()
-    val crop = remember(art, frac, spot.fx, spot.fy) {
-        art?.let { cropAround(it, spot.fx, spot.fy, frac) }
-    }
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(index * 70L); shown = true }
     val scale = animateFloatAsState(
@@ -1124,14 +1121,15 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
                         )
                     )
             )
-            // The circle itself: shadow first so it floats, then the dark
-            // ink ring, then inside it the painting crop with its color rim.
+            // The circle itself: shadow first so it floats, then the two
+            // rings — dark ink outside, the spot's color inside — and
+            // nothing inside them: the painting shows straight through.
             Box(
                 Modifier
                     .size(chipDp)
                     .shadow(7.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(Color(0xFF10131A))
+                    .border(2.5.dp, Color(0xFF10131A), CircleShape)
                     .clickable { onTap() },
                 contentAlignment = Alignment.Center
             ) {
@@ -1142,14 +1140,6 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
                         .border(2.dp, color, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (crop != null) {
-                        Image(
-                            bitmap = crop.asImageBitmap(),
-                            contentDescription = spot.label,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
                 }
             }
         }
