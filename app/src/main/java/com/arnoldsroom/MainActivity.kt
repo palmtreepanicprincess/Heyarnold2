@@ -134,7 +134,8 @@ data class VideoItem(
     val durationMs: Long,
     val sizeBytes: Long,
     val dateAddedSec: Long,
-    val folder: String
+    val folder: String,
+    val relPath: String = ""
 )
 
 enum class Filter(val label: String) {
@@ -148,6 +149,10 @@ sealed class Screen {
     object Room : Screen()
     data class Library(val filter: Filter) : Screen()
     object Categories : Screen()
+    object Shows : Screen()
+    data class ShowDetail(val showTitle: String) : Screen()
+    object MovieFolders : Screen()
+    data class FolderDetail(val key: String) : Screen()
     object Search : Screen()
     object Settings : Screen()
     data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String) : Screen()
@@ -180,6 +185,95 @@ fun heuristicCat(v: VideoItem): AssignCat {
     }
 }
 
+// ---------- Folder auto-detection: shows, seasons, movie folders ----------
+private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s_]*(\\d{1,2})$|^s(\\d{1,2})$")
+private val epCodeRegex = Regex("(?i)s(\\d{1,2})e(\\d{1,3})")
+private val genericSegs = setOf(
+    "movies", "movie", "films", "film", "cinema", "tv", "tv shows", "shows", "series",
+    "download", "downloads", "video", "videos", "media", "storage", "emulated", "0",
+    "sdcard", "internal storage"
+)
+
+fun cleanTitle(raw: String): String {
+    var t = raw.substringBeforeLast('.', raw)
+    t = t.replace(Regex("\\[.*?\\]"), " ")
+    t = t.replace(Regex("(?i)\\b(720p|1080p|2160p|480p|bluray|blu-ray|webrip|web-dl|hdrip|dvdrip|x264|x265|h264|h265|hevc|aac|mp4|mkv|avi)\\b"), " ")
+    t = t.replace(Regex("[._]+"), " ")
+    t = t.replace(Regex("\\s+"), " ").trim(' ', '-')
+    return t.ifBlank { raw }
+}
+
+fun pathSegments(v: VideoItem): List<String> =
+    v.relPath.split('/').map { it.trim() }.filter { it.isNotEmpty() }
+
+fun seasonOfSegment(seg: String): Int? =
+    seasonSegRegex.find(seg.trim())?.let { m ->
+        (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+    }
+
+fun showTitleOf(v: VideoItem): String {
+    val segs = pathSegments(v)
+    val sIdx = segs.indexOfFirst { seasonOfSegment(it) != null }
+    if (sIdx > 0) {
+        val cand = segs[sIdx - 1]
+        if (cand.lowercase() !in genericSegs) return cleanTitle(cand)
+    }
+    epCodeRegex.find(v.name)?.let { m ->
+        val t = cleanTitle(v.name.substring(0, m.range.first))
+        if (t.isNotBlank()) return t
+    }
+    val last = segs.lastOrNull { it.lowercase() !in genericSegs }
+    if (last != null) return cleanTitle(last)
+    return "Unknown Show"
+}
+
+fun seasonOf(v: VideoItem): Int {
+    for (s in pathSegments(v)) seasonOfSegment(s)?.let { return it }
+    epCodeRegex.find(v.name)?.let { return it.groupValues[1].toIntOrNull() ?: 1 }
+    return 1
+}
+
+fun episodeKey(v: VideoItem): Int {
+    epCodeRegex.find(v.name)?.let { return it.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE }
+    val nums = Regex("\\d+").findAll(v.title).mapNotNull { it.value.toIntOrNull() }.toList()
+    return nums.lastOrNull() ?: Int.MAX_VALUE
+}
+
+data class ShowInfo(val title: String, val seasons: Map<Int, List<VideoItem>>)
+
+fun detectShows(videos: List<VideoItem>, catOf: (VideoItem) -> AssignCat): List<ShowInfo> =
+    videos.filter { catOf(it) == AssignCat.TV }
+        .groupBy { showTitleOf(it) }
+        .map { (title, eps) ->
+            ShowInfo(
+                title,
+                eps.groupBy { seasonOf(it) }.toSortedMap()
+                    .mapValues { (_, list) ->
+                        list.sortedWith(compareBy({ episodeKey(it) }, { it.title.lowercase() }))
+                    }
+            )
+        }
+        .sortedBy { it.title.lowercase() }
+
+data class MovieFolder(val key: String, val title: String, val items: List<VideoItem>)
+
+fun movieFolderKey(v: VideoItem): String {
+    val segs = pathSegments(v)
+    val last = segs.lastOrNull()
+    return if (last != null && (segs.size >= 2 || last.lowercase() !in genericSegs)) "dir:$last"
+    else "file:${v.id}"
+}
+
+fun detectMovieFolders(videos: List<VideoItem>, catOf: (VideoItem) -> AssignCat): List<MovieFolder> =
+    videos.filter { catOf(it) == AssignCat.MOVIE }
+        .groupBy { movieFolderKey(it) }
+        .map { (key, items) ->
+            val title = if (key.startsWith("dir:")) cleanTitle(key.removePrefix("dir:"))
+            else cleanTitle(items.first().title)
+            MovieFolder(key, title, items.sortedBy { it.title.lowercase() })
+        }
+        .sortedBy { it.title.lowercase() }
+
 fun loadVideos(resolver: ContentResolver): List<VideoItem> {
     val out = mutableListOf<VideoItem>()
     val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
@@ -207,6 +301,7 @@ fun loadVideos(resolver: ContentResolver): List<VideoItem> {
             val name = c.getString(nameI) ?: "Video $id"
             val path = c.getString(pathI) ?: ""
             val folder = path.trim('/').substringBeforeLast('/', path.trim('/'))
+            val relPath = if (Build.VERSION.SDK_INT >= 29) path else path.substringBeforeLast('/', "")
             out.add(
                 VideoItem(
                     id = id,
@@ -216,7 +311,8 @@ fun loadVideos(resolver: ContentResolver): List<VideoItem> {
                     durationMs = c.getLong(durI),
                     sizeBytes = c.getLong(sizeI),
                     dateAddedSec = c.getLong(dateI),
-                    folder = folder
+                    folder = folder,
+                    relPath = relPath
                 )
             )
         }
@@ -354,9 +450,54 @@ fun ArnoldsRoomApp() {
             )
             is Screen.Categories -> CategoriesScreen(
                 counts = Filter.values().associateWith { filtered(it).size },
+                showsCount = detectShows(videos, ::catOf).size,
+                movieFolderCount = detectMovieFolders(videos, ::catOf).size,
                 onPick = { screen = Screen.Library(it) },
+                onShows = { screen = Screen.Shows },
+                onMovieFolders = { screen = Screen.MovieFolders },
                 onRoom = { screen = Screen.Room }
             )
+            is Screen.Shows -> ShowsScreen(
+                shows = detectShows(videos, ::catOf),
+                onPick = { screen = Screen.ShowDetail(it) },
+                onRoom = { screen = Screen.Room }
+            )
+            is Screen.ShowDetail -> {
+                val show = detectShows(videos, ::catOf).firstOrNull { it.title == s.showTitle }
+                if (show != null) {
+                    ShowDetailScreen(
+                        show = show,
+                        isFav = ::isFav,
+                        savedPos = ::savedPos,
+                        onPlay = { queue, idx -> screen = Screen.Player(queue, idx, s.showTitle) },
+                        onRoom = { screen = Screen.Room }
+                    )
+                } else {
+                    ShowsScreen(
+                        shows = detectShows(videos, ::catOf),
+                        onPick = { screen = Screen.ShowDetail(it) },
+                        onRoom = { screen = Screen.Room }
+                    )
+                }
+            }
+            is Screen.MovieFolders -> MovieFoldersScreen(
+                folders = detectMovieFolders(videos, ::catOf),
+                onPick = { screen = Screen.FolderDetail(it) },
+                onRoom = { screen = Screen.Room }
+            )
+            is Screen.FolderDetail -> {
+                val folder = detectMovieFolders(videos, ::catOf).firstOrNull { it.key == s.key }
+                LibraryScreen(
+                    title = folder?.title ?: "Movies",
+                    items = folder?.items ?: emptyList(),
+                    prefs = prefs,
+                    catOf = ::catOf,
+                    isFav = ::isFav,
+                    savedPos = ::savedPos,
+                    onPlay = { queue, idx -> screen = Screen.Player(queue, idx, folder?.title ?: "Movies") },
+                    onRoom = { screen = Screen.Room }
+                )
+            }
             is Screen.Library -> LibraryScreen(
                 title = s.filter.label,
                 items = filtered(s.filter),
@@ -706,10 +847,48 @@ fun AssignDialog(
 // ---------- Categories ----------
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun CategoriesScreen(counts: Map<Filter, Int>, onPick: (Filter) -> Unit, onRoom: () -> Unit) {
+fun CategoriesScreen(
+    counts: Map<Filter, Int>,
+    showsCount: Int,
+    movieFolderCount: Int,
+    onPick: (Filter) -> Unit,
+    onShows: () -> Unit,
+    onMovieFolders: () -> Unit,
+    onRoom: () -> Unit
+) {
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("The Shelves — Categories", onRoom)
         LazyColumn(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .combinedClickable(onClick = onShows).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Tv, null, tint = RoomOrange, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("TV Shows — by Folder & Season", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Auto-detected from your folders", color = RoomTextDim, fontSize = 12.sp)
+                    }
+                    Text("$showsCount", color = RoomSky, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .combinedClickable(onClick = onMovieFolders).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Movie, null, tint = RoomOrange, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Movies — by Folder", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Auto-detected from your folders", color = RoomTextDim, fontSize = 12.sp)
+                    }
+                    Text("$movieFolderCount", color = RoomSky, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             items(Filter.values().toList()) { f ->
                 val icon = when (f) {
                     Filter.MOVIES -> Icons.Filled.Movie
@@ -735,6 +914,119 @@ fun CategoriesScreen(counts: Map<Filter, Int>, onPick: (Filter) -> Unit, onRoom:
             item {
                 Text("Long-press any video in a list to file it under Movies or TV Shows, or make it a favorite.",
                     color = RoomTextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+    }
+}
+
+// ---------- Auto-detected shows & movie folders ----------
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ShowsScreen(shows: List<ShowInfo>, onPick: (String) -> Unit, onRoom: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader("TV Shows — Folders & Seasons", onRoom)
+        if (shows.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No shows detected yet.\nPut episodes in a folder named after the show,\nwith Season 1, Season 2 folders inside,\nand they'll line up here on their own.",
+                    color = RoomTextDim, fontSize = 15.sp, modifier = Modifier.padding(24.dp)
+                )
+            }
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(shows) { sh ->
+                    val epCount = sh.seasons.values.sumOf { it.size }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                            .combinedClickable(onClick = { onPick(sh.title) }).padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Tv, null, tint = RoomYellow, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(sh.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${sh.seasons.size} season${if (sh.seasons.size == 1) "" else "s"} • $epCount episodes",
+                                color = RoomTextDim, fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ShowDetailScreen(
+    show: ShowInfo,
+    isFav: (VideoItem) -> Boolean,
+    savedPos: (VideoItem) -> Long,
+    onPlay: (List<VideoItem>, Int) -> Unit,
+    onRoom: () -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader(show.title, onRoom)
+        LazyColumn(Modifier.fillMaxSize()) {
+            show.seasons.forEach { (season, eps) ->
+                item {
+                    Text(
+                        "Season $season", color = RoomYellow, fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)
+                    )
+                }
+                items(eps) { v ->
+                    VideoRow(
+                        v, AssignCat.TV, isFav(v), savedPos(v), false,
+                        onClick = { onPlay(eps, eps.indexOf(v)) },
+                        onLongPress = {}
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onRoom: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        ScreenHeader("Movies — by Folder", onRoom)
+        if (folders.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No movie folders detected yet.\nMovies in their own folders will show up here,\nnamed by the folder.",
+                    color = RoomTextDim, fontSize = 15.sp, modifier = Modifier.padding(24.dp)
+                )
+            }
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(folders) { mf ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                            .combinedClickable(onClick = { onPick(mf.key) }).padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Movie, null, tint = RoomYellow, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(mf.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (mf.items.size == 1) fmtDur(mf.items.first().durationMs)
+                                else "${mf.items.size} videos",
+                                color = RoomTextDim, fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     }
