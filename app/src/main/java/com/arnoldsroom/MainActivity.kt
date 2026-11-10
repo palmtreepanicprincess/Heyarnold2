@@ -1157,7 +1157,7 @@ fun ArnoldsRoomApp() {
             )
             }
         }
-        if (doorGone && screen !is Screen.Player) {
+        if (doorGone && screen is Screen.Room) {
             miniQueue?.let { q ->
                 MiniPlayerBox(
                     queue = q,
@@ -1180,7 +1180,7 @@ fun ArnoldsRoomApp() {
                 onClose = { showRadio = false }
             )
         }
-        if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
+        if (MusicState.hasMedia && screen is Screen.Room && doorGone && showMusicMini && !PipControl.inPip) {
             MusicMiniBox(
                 onExpand = { navTo(Screen.MusicPlayer) },
                 onClose = { showMusicMini = false }
@@ -2870,7 +2870,7 @@ fun SettingsScreen(
                     "• Door — settings (you're here)\n\n" +
                     "How the sound works: the room song is the app's ambience. The music button in the room hushes it. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
                     "Every list wears a strip of the room's painting at the top, in the same day or night as the room. The button in the room's top corner steps through dawn, day, dusk, and night — tap it to live in whichever light you like; left alone, the room follows the real clock. The star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
-                    "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
+                    "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The pop-up players live in the room: open a menu and they step aside, close it and they're back right where you left them. The TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
                 )
               }
