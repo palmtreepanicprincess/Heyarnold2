@@ -2283,14 +2283,19 @@ fun RoomBackdrop() {
 // straight back to the main part of the app, however deep she is.
 @Composable
 fun RoomXButton(onRoom: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    // A generous target, held off the very corner (May, 2026-11-10:
+    // tucked into the corner, she couldn't reliably tap it) — the
+    // whole little column is the button, label and all.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(start = 8.dp, end = 6.dp).clickable { onRoom() }
+    ) {
         Box(
-            Modifier.size(34.dp).shadow(3.dp, CircleShape).clip(CircleShape)
-                .background(Color(0xCC10131A)).border(1.8.dp, Color.White, CircleShape)
-                .clickable { onRoom() },
+            Modifier.size(40.dp).shadow(3.dp, CircleShape).clip(CircleShape)
+                .background(Color(0xCC10131A)).border(1.8.dp, Color.White, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Close, "Back to the room", tint = Color.White, modifier = Modifier.size(19.dp))
+            Icon(Icons.Filled.Close, "Back to the room", tint = Color.White, modifier = Modifier.size(22.dp))
         }
         Text("Room", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
     }
