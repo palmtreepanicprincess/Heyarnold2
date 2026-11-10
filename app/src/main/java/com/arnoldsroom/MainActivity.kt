@@ -89,7 +89,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material.icons.filled.Repeat
@@ -476,6 +478,7 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
         MediaStore.Audio.Media._ID,
         MediaStore.Audio.Media.TITLE,
         MediaStore.Audio.Media.ARTIST,
+        MediaStore.Audio.Media.ALBUM,
         MediaStore.Audio.Media.DURATION
     )
     resolver.query(
@@ -486,16 +489,19 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
         val idI = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
         val tI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
         val aI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+        val alI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
         val dI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
         while (c.moveToNext()) {
             val id = c.getLong(idI)
             val title = c.getString(tI)?.takeIf { it.isNotBlank() } ?: "Unknown title"
             val artist = c.getString(aI)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown artist"
+            val album = c.getString(alI)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown album"
             out.add(
                 SongItem(
                     id = id,
                     title = title,
                     artist = artist,
+                    album = album,
                     durationMs = c.getLong(dI),
                     uri = Uri.withAppendedPath(collection, id.toString()).toString()
                 )
@@ -1526,7 +1532,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.130f, 0.350f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.130f, 0.330f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
     )
     val tallSpots = listOf(
@@ -3398,6 +3404,57 @@ fun MiniPlayerBox(
 private val MusicLime = Color(0xFF76FF03)
 
 @Composable
+private fun SongRow(
+    s: SongItem,
+    prefs: SharedPreferences,
+    onPlay: () -> Unit,
+    onToggleFav: () -> Unit
+) {
+    val fav = prefs.getBoolean("music_fav_${s.id}", false)
+    val saved = prefs.getLong("music_pos_${s.id}", 0L)
+    val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
+    Row(
+        Modifier.fillMaxWidth().clickable { onPlay() }.padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(42.dp).clip(CircleShape)
+                .background(if (isCurrent) MusicLime.copy(alpha = 0.2f) else Color(0xFF232A33))
+                .border(1.5.dp, if (isCurrent) MusicLime else Color(0xFF39424E), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.MusicNote, null,
+                tint = if (isCurrent) MusicLime else RoomTextDim,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                s.title, color = if (isCurrent) MusicLime else Color.White,
+                fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "${s.artist} • ${fmtDur(s.durationMs)}" +
+                    if (saved > 10_000 && s.durationMs > 0 && saved < s.durationMs * 95 / 100)
+                        " • left off at ${fmtDur(saved)}" else "",
+                color = RoomTextDim, fontSize = 12.5.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onToggleFav) {
+            Icon(
+                if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                if (fav) "Unfavorite" else "Favorite",
+                tint = if (fav) Color(0xFFF50057) else RoomTextDim
+            )
+        }
+    }
+}
+
+@Composable
 fun MusicLibraryScreen(
     prefs: SharedPreferences,
     onPlaySong: (List<SongItem>, Int) -> Unit,
@@ -3412,30 +3469,56 @@ fun MusicLibraryScreen(
     }
     var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var favOnly by remember { mutableStateOf(false) }
+    var tab by remember { mutableStateOf(0) } // 0 Songs, 1 Albums, 2 Artists, 3 Favorites
+    var albumPick by remember { mutableStateOf<String?>(null) }
+    var artistPick by remember { mutableStateOf<String?>(null) }
     var favTick by remember { mutableStateOf(0) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         audioGranted = ok
     }
     // Subscribes this screen to heart toggles (favorites live in
-    // prefs, not state, so the tick is what recomposes the list).
+    // prefs, not state, so the tick is what recomposes the lists).
     val favTickSnapshot = favTick
     LaunchedEffect(audioGranted) {
         if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context.contentResolver) }
     }
-    fun isFav(s: SongItem) = prefs.getBoolean("music_fav_${s.id}", false)
-    val shown = songs.filter { s ->
-        (!favOnly || isFav(s)) &&
-            (query.isBlank() || s.title.contains(query, true) || s.artist.contains(query, true))
+    BackHandler(enabled = albumPick != null || artistPick != null) {
+        albumPick = null
+        artistPick = null
     }
+    fun isFav(s: SongItem) = prefs.getBoolean("music_fav_${s.id}", false)
+    fun matches(s: SongItem) =
+        query.isBlank() || s.title.contains(query, true) || s.artist.contains(query, true) ||
+            s.album.contains(query, true)
+    val albums = songs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
+    val artists = songs.groupBy { it.artist }.entries.sortedBy { it.key.lowercase() }
+    val inDetail = albumPick != null || artistPick != null
     Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onRoom) {
-                Icon(Icons.Filled.ArrowBack, "Back to the room", tint = RoomTextDim)
+            IconButton(onClick = {
+                if (inDetail) {
+                    albumPick = null
+                    artistPick = null
+                } else onRoom()
+            }) {
+                Icon(Icons.Filled.ArrowBack, "Back", tint = RoomTextDim)
             }
-            Text("Music", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text("${songs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+            Text(
+                when {
+                    albumPick != null -> albumPick!!
+                    artistPick != null -> artistPick!!
+                    else -> "Music"
+                },
+                color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (!inDetail) {
+                Text(
+                    "${songs.size} songs • ${albums.size} albums • ${artists.size} artists",
+                    color = RoomTextDim, fontSize = 12.sp
+                )
+            }
         }
         if (!audioGranted) {
             Spacer(Modifier.height(24.dp))
@@ -3447,7 +3530,7 @@ fun MusicLibraryScreen(
             Button(onClick = { permLauncher.launch(audioPermission()) }) { Text("Allow music access") }
             return@Column
         }
-        if (MusicState.hasMedia) {
+        if (MusicState.hasMedia && !inDetail) {
             Spacer(Modifier.height(10.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
@@ -3483,12 +3566,56 @@ fun MusicLibraryScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Search your music") },
+            placeholder = { Text("Search songs, albums, artists") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
+        if (inDetail) {
+            val detailSongs = when {
+                albumPick != null -> songs.filter { it.album == albumPick }
+                else -> songs.filter { it.artist == artistPick }
+            }.filter { matches(it) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs, 0) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Play", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs.shuffled(), 0) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+                ) {
+                    Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Shuffle", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("${detailSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(detailSongs, key = { it.id }) { s ->
+                    SongRow(
+                        s = s, prefs = prefs,
+                        onPlay = {
+                            val idx = detailSongs.indexOf(s)
+                            if (idx >= 0) onPlaySong(detailSongs, idx)
+                        },
+                        onToggleFav = {
+                            prefs.edit().putBoolean("music_fav_${s.id}", !isFav(s)).apply()
+                            favTick++
+                        }
+                    )
+                }
+            }
+            return@Column
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = { if (songs.isNotEmpty()) onPlaySong(songs.shuffled(), 0) },
@@ -3498,66 +3625,109 @@ fun MusicLibraryScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("Shuffle all", fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.width(10.dp))
-            TextButton(onClick = { favOnly = false }) {
-                Text("All", color = if (!favOnly) MusicLime else RoomTextDim, fontWeight = FontWeight.Bold)
-            }
-            TextButton(onClick = { favOnly = true }) {
-                Text("Favorites", color = if (favOnly) MusicLime else RoomTextDim, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row {
+            listOf("Songs", "Albums", "Artists", "Favorites").forEachIndexed { i, label ->
+                TextButton(onClick = { tab = i }) {
+                    Text(
+                        label,
+                        color = if (tab == i) MusicLime else RoomTextDim,
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(6.dp))
         if (songs.isEmpty()) {
             Text("No music files found on this phone yet.", color = RoomTextDim, fontSize = 15.sp)
         }
-        LazyColumn(Modifier.fillMaxSize()) {
-            items(shown, key = { it.id }) { s ->
-                val fav = isFav(s)
-                val saved = prefs.getLong("music_pos_${s.id}", 0L)
-                val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
-                Row(
-                    Modifier.fillMaxWidth().clickable {
-                        val idx = shown.indexOf(s)
-                        if (idx >= 0) onPlaySong(shown, idx)
-                    }.padding(vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(42.dp).clip(CircleShape)
-                            .background(if (isCurrent) MusicLime.copy(alpha = 0.2f) else Color(0xFF232A33))
-                            .border(1.5.dp, if (isCurrent) MusicLime else Color(0xFF39424E), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.MusicNote, null,
-                            tint = if (isCurrent) MusicLime else RoomTextDim,
-                            modifier = Modifier.size(20.dp)
+        when (tab) {
+            0, 3 -> {
+                val shown = songs.filter { s -> (tab == 0 || isFav(s)) && matches(s) }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(shown, key = { it.id }) { s ->
+                        SongRow(
+                            s = s, prefs = prefs,
+                            onPlay = {
+                                val idx = shown.indexOf(s)
+                                if (idx >= 0) onPlaySong(shown, idx)
+                            },
+                            onToggleFav = {
+                                prefs.edit().putBoolean("music_fav_${s.id}", !isFav(s)).apply()
+                                favTick++
+                            }
                         )
                     }
-                    Spacer(Modifier.width(11.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            s.title, color = if (isCurrent) MusicLime else Color.White,
-                            fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "${s.artist} • ${fmtDur(s.durationMs)}" +
-                                if (saved > 10_000 && s.durationMs > 0 && saved < s.durationMs * 95 / 100)
-                                    " • left off at ${fmtDur(saved)}" else "",
-                            color = RoomTextDim, fontSize = 12.5.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
+                }
+            }
+            1 -> {
+                val shownAlbums = albums.filter { (name, list) ->
+                    query.isBlank() || name.contains(query, true) || list.any { matches(it) }
+                }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(shownAlbums, key = { it.key }) { (name, list) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { albumPick = name }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
+                                    .background(Color(0xFF232A33))
+                                    .border(1.5.dp, Color(0xFF39424E), RoundedCornerShape(9.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Album, null, tint = MusicLime, modifier = Modifier.size(24.dp))
+                            }
+                            Spacer(Modifier.width(11.dp))
+                            Column {
+                                Text(
+                                    name, color = Color.White, fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${list.firstOrNull()?.artist ?: ""} • ${list.size} songs",
+                                    color = RoomTextDim, fontSize = 12.5.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
-                    IconButton(onClick = {
-                        prefs.edit().putBoolean("music_fav_${s.id}", !fav).apply()
-                        favTick++
-                    }) {
-                        Icon(
-                            if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            if (fav) "Unfavorite" else "Favorite",
-                            tint = if (fav) Color(0xFFF50057) else RoomTextDim
-                        )
+                }
+            }
+            else -> {
+                val shownArtists = artists.filter { (name, _) ->
+                    query.isBlank() || name.contains(query, true)
+                }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(shownArtists, key = { it.key }) { (name, list) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { artistPick = name }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(46.dp).clip(CircleShape)
+                                    .background(Color(0xFF232A33))
+                                    .border(1.5.dp, Color(0xFF39424E), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Person, null, tint = MusicLime, modifier = Modifier.size(24.dp))
+                            }
+                            Spacer(Modifier.width(11.dp))
+                            Column {
+                                Text(
+                                    name, color = Color.White, fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${list.size} songs • ${list.map { it.album }.distinct().size} albums",
+                                    color = RoomTextDim, fontSize = 12.5.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
