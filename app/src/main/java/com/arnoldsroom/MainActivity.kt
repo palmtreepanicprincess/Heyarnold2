@@ -1039,7 +1039,7 @@ fun PlayerScreen(
                                 Row(
                                     Modifier.fillMaxWidth()
                                         .background(if (i == index) Color(0xFF2A3350) else Color.Transparent)
-                                        .combinedClickable(onClick = { exo.seekToMediaItem(i, 0); exo.play() })
+                                        .combinedClickable(onClick = { exo.seekTo(i, 0L); exo.play() })
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1065,7 +1065,7 @@ fun PlayerScreen(
                             Row(
                                 Modifier.fillMaxWidth()
                                     .background(if (i == index) Color(0xFF2A3350) else Color.Transparent)
-                                    .combinedClickable(onClick = { exo.seekToMediaItem(i, 0); exo.play() })
+                                    .combinedClickable(onClick = { exo.seekTo(i, 0L); exo.play() })
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
