@@ -68,6 +68,8 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -102,6 +104,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -369,6 +372,7 @@ fun ArnoldsRoomApp() {
     var pendingDest by remember { mutableStateOf<Screen?>(null) }
     var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
     var miniIndex by remember { mutableStateOf(0) }
+    var musicOn by remember { mutableStateOf(true) }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -390,7 +394,7 @@ fun ArnoldsRoomApp() {
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null) startMusic()
+                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -398,12 +402,11 @@ fun ArnoldsRoomApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(screen) {
-        if (screen is Screen.Room) {
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && miniQueue == null) startMusic()
+    LaunchedEffect(screen, musicOn, miniQueue) {
+        if (screen is Screen.Room && musicOn && miniQueue == null) {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
-    LaunchedEffect(miniQueue) { if (miniQueue != null) pauseMusic() }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
     // ----- Permission + library load -----
@@ -468,6 +471,8 @@ fun ArnoldsRoomApp() {
             is Screen.Room -> RoomScreen(
                 night = night,
                 onToggleNight = { nightOverride = !night },
+                musicOn = musicOn,
+                onToggleMusic = { musicOn = !musicOn },
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -673,10 +678,11 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
     ) {
         Box(
             Modifier
-                .size(42.dp)
+                .size(47.dp)
+                .shadow(7.dp, CircleShape)
                 .clip(CircleShape)
-                .background(if (tapped) RoomOrange else Color(0xCC10131A))
-                .border(1.5.dp, if (tapped) RoomYellow else RoomSky, CircleShape),
+                .background(if (tapped) RoomOrange else Color(0xF210131A))
+                .border(2.5.dp, if (tapped) RoomYellow else Color(0xFFFFE9A8), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             if (art != null) {
@@ -684,7 +690,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
                     bitmap = art.asImageBitmap(),
                     contentDescription = spot.label,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().padding(3.5.dp).clip(CircleShape)
                 )
                 if (tapped) Box(Modifier.fillMaxSize().background(Color(0x55FF7A29)))
             } else {
@@ -707,7 +713,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search),
@@ -814,6 +820,43 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 .background(Color(0x9910131A))
                 .padding(horizontal = 14.dp, vertical = 6.dp)
         )
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+                .combinedClickable(onClick = onToggleMusic),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(42.dp)
+                    .shadow(6.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color(0xCC10131A))
+                    .border(1.5.dp, RoomSky, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Crossfade(targetState = musicOn, animationSpec = tween(300), label = "musicIcon") { on ->
+                    Icon(
+                        if (on) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
+                        if (on) "Pause music" else "Play music",
+                        tint = if (on) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (musicOn) "Music" else "Muted",
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xAA10131A))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -1731,8 +1774,12 @@ fun MiniPlayerBox(
                     .pointerInput(Unit) {
                         detectDragGestures { change, drag ->
                             change.consume()
-                            offX = x + drag.x
-                            offY = y + drag.y
+                            val curX = offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() })
+                            val curY = offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() })
+                            offX = (curX + drag.x)
+                                .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                            offY = (curY + drag.y)
+                                .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
                         }
                     }
                     .padding(horizontal = 6.dp),
