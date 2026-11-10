@@ -26,6 +26,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -1330,7 +1331,7 @@ fun ShowDetailScreen(
                 Text(
                     "Long-press an episode to mark it watched, or unwatched again.",
                     color = RoomTextDim, fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, bottom = 2.dp)
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp)
                 )
             }
             show.seasons.forEach { (season, eps) ->
