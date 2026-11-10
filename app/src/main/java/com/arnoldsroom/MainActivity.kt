@@ -438,11 +438,6 @@ fun ArnoldsRoomApp() {
     var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
     var miniIndex by remember { mutableStateOf(0) }
     var musicOn by remember { mutableStateOf(true) }
-    var hintVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        delay(4000)
-        hintVisible = false
-    }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -559,7 +554,6 @@ fun ArnoldsRoomApp() {
                 onToggleNight = { nightOverride = !night },
                 musicOn = musicOn,
                 onToggleMusic = { musicOn = !musicOn },
-                hintVisible = hintVisible,
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -804,7 +798,7 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, hintVisible: Boolean) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
@@ -836,6 +830,15 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
         Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
     )
+    // The hint: shows on arrival, fades after 4 idle seconds, and comes back
+    // whenever a blank spot in the room is tapped (which restarts the timer).
+    var hintVisible by remember { mutableStateOf(true) }
+    var hintTick by remember { mutableStateOf(0) }
+    LaunchedEffect(hintTick) {
+        hintVisible = true
+        delay(4000)
+        hintVisible = false
+    }
     var tappedLabel by remember { mutableStateOf<String?>(null) }
     var zoomOrigin by remember { mutableStateOf(TransformOrigin.Center) }
     val roomZoom = remember { Animatable(1f) }
@@ -854,7 +857,10 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             if (d != null) onHotspot(d) else onShuffle()
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().background(Color.Black)
+            .pointerInput(Unit) { detectTapGestures(onTap = { hintTick++ }) }
+    ) {
         val maxWDp = maxWidth
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
