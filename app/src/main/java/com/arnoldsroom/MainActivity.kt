@@ -128,6 +128,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
@@ -1044,7 +1045,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             )
         }
         Text(
-            "Series created by Craig Bartlett\nApp Created by May",
+            "Series created by Craig Bartlett\nApp Created by May Marquardt",
             fontFamily = HandwrittenFont,
             color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
             fontSize = 15.sp,
