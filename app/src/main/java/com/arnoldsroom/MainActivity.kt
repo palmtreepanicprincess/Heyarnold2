@@ -618,7 +618,13 @@ fun ArnoldsRoomApp() {
         val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
         if (screen is Screen.Room) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
+            // Some phones (her Razr) still hold the bottom gesture strip
+            // back even with the bars hidden — a measured ~2% black band.
+            // FLAG_LAYOUT_NO_LIMITS sizes the window to the full display
+            // regardless, so the painting can truly reach the bottom.
+            act.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         } else {
+            act.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
             controller.hide(WindowInsetsCompat.Type.statusBars())
             controller.show(WindowInsetsCompat.Type.navigationBars())
         }
@@ -976,8 +982,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
         val yBot = if (tall) 0.235f else 0.270f
         val halfTop = if (tall) 0.45f else 0.46f
         val halfBot = if (tall) 0.19f else 0.28f
-        val moonX = if (tall) 0.66f else 0.79f
-        val moonY = if (tall) 0.095f else 0.135f
+        val moonX = if (tall) 0.774f else 0.802f
+        val moonY = if (tall) 0.094f else 0.146f
         val moonR = if (tall) 0.060f else 0.055f
         List(n) {
             var fx = 0.5f
@@ -1009,8 +1015,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
                 drawLine(col, Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
             }
         } else {
-            val sunFx = if (tall) 0.66f else 0.79f
-            val sunFy = if (tall) 0.095f else 0.135f
+            val sunFx = if (tall) 0.776f else 0.793f
+            val sunFy = if (tall) 0.078f else 0.145f
             val cx = sunFx * size.width
             val cy = sunFy * size.height
             val breathe = 0.5f + 0.5f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
@@ -1302,13 +1308,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     )
     val tallSpots = listOf(
         Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
-        Hotspot(0.070f, 0.467f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
-        Hotspot(0.325f, 0.402f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.636f, 0.412f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
-        Hotspot(0.523f, 0.480f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
-        Hotspot(0.065f, 0.552f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.712f, 0.547f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
+        Hotspot(0.125f, 0.430f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
+        Hotspot(0.375f, 0.385f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
+        Hotspot(0.640f, 0.407f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.535f, 0.450f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
+        Hotspot(0.700f, 0.548f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.905f, 0.462f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -1504,12 +1510,24 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 12.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+            // The AM/PM renders smaller than the digits — at full size
+            // it looked bigger than the time itself (May, 2026-11-10).
+            val timeParts = clockText.split(" ")
             Text(
-                clockText,
+                timeParts.getOrElse(0) { clockText },
                 fontFamily = HandwrittenFont,
                 color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
                 fontSize = 20.sp
             )
+            if (timeParts.size > 1) {
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    timeParts[1],
+                    fontFamily = HandwrittenFont,
+                    color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+                    fontSize = 13.sp
+                )
+            }
             if (batteryPct >= 0) {
                 Spacer(Modifier.width(9.dp))
                 Text(
