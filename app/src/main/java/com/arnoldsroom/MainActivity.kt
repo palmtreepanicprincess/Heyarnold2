@@ -217,6 +217,7 @@ import androidx.media3.ui.PlayerView
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1626,7 +1627,7 @@ private class CityAmbiencePlayer {
             var fade = 0f
             var carAt = -1f; var carLen = 3f; var carLp = 0f; var carHp = 0f; var truck = false
             var nextCar = 2.0
-            var clankAt = -1; var clankT = 0f; var clankF = 1900f; var thudT = 0f
+            var clankAt = -1; var clankT = 0.0; var clankF = 1900f; var thudT = 0.0
             var nextWorks = 9.0; var clanksLeft = 0; var clankGap = 0f
             var nextPhrase = 5.0; var sylLeft = 0; var sylT = 0f; var sylLen = 0.12f; var sylGap = 0f; var voiceLp = 0f; var voiceBp = 0f
             var time = 0.0
@@ -1663,25 +1664,25 @@ private class CityAmbiencePlayer {
                         clanksLeft = 2 + rnd.nextInt(4)
                         clankGap = 0f
                         nextWorks = 13.0 + rnd.nextDouble() * 22.0
-                        if (rnd.nextFloat() < 0.4f) thudT = 0.35f
+                        if (rnd.nextFloat() < 0.4f) thudT = 0.35
                     }
                     if (clanksLeft > 0) {
                         clankGap -= dt.toFloat()
                         if (clankGap <= 0f && clankAt < 0) {
-                            clankAt = 0; clankT = 0f; clankF = 1500f + rnd.nextFloat() * 1100f
+                            clankAt = 0; clankT = 0.0; clankF = 1500f + rnd.nextFloat() * 1100f
                             clanksLeft--; clankGap = 0.16f + rnd.nextFloat() * 0.5f
                         }
                     }
                     if (clankAt >= 0) {
-                        clankT += dt.toFloat()
-                        val env = kotlin.math.exp(-clankT * 26.0).toFloat()
-                        out += (sin(2.0 * PI * clankF * clankT) * 0.055 * env).toFloat()
-                        if (clankT > 0.25f) clankAt = -1
+                        clankT += dt
+                        val env = kotlin.math.exp(-clankT * 26.0)
+                        out += (kotlin.math.sin(2.0 * Math.PI * clankF.toDouble() * clankT) * 0.055 * env).toFloat()
+                        if (clankT > 0.25) clankAt = -1
                     }
-                    if (thudT > 0f) {
-                        thudT -= dt.toFloat()
-                        val tt = 0.35f - thudT
-                        out += (sin(2.0 * PI * 74.0 * tt) * 0.10 * kotlin.math.exp(-tt * 11.0)).toFloat()
+                    if (thudT > 0.0) {
+                        thudT -= dt
+                        val tt = 0.35 - thudT
+                        out += (kotlin.math.sin(2.0 * Math.PI * 74.0 * tt) * 0.10 * kotlin.math.exp(-tt * 11.0)).toFloat()
                     }
                     nextPhrase -= dt
                     if (nextPhrase <= 0.0 && sylLeft == 0) {
@@ -1698,7 +1699,7 @@ private class CityAmbiencePlayer {
                         voiceLp += 0.16f * (white - voiceLp)
                         voiceBp += 0.05f * (voiceLp - voiceBp)
                         val shape = (1f - sylT / sylLen).coerceIn(0f, 1f)
-                        out += (voiceLp - voiceBp) * 0.55f * sin(PI * shape).toFloat()
+                        out += (voiceLp - voiceBp) * 0.55f * kotlin.math.sin(Math.PI * shape.toDouble()).toFloat()
                         if (sylT <= 0f) sylGap = 0.05f + rnd.nextFloat() * 0.16f
                     }
                     chunk[i] = (out * 0.5f * fade).coerceIn(-0.9f, 0.9f)
@@ -3658,7 +3659,8 @@ fun RadioPlayerBox(
 Icon(
                         Icons.Filled.OpenInFull, "Resize player", tint = Color(0xFFFF6EC7),
                         modifier = Modifier.size(19.dp).pointerInput(Unit) {
-                            launch {
+                            coroutineScope {
+                                launch {
                                 detectTapGestures {
                                     widthDpF = when {
                                         widthDpF < 200f -> 240f
@@ -3672,6 +3674,7 @@ Icon(
                                 detectDragGestures { change, drag ->
                                     change.consume()
                                     widthDpF = (widthDpF + drag.x / density).coerceIn(150f, 480f)
+                                }
                                 }
                             }
                         }
@@ -4986,7 +4989,8 @@ fun MusicMiniBox(
                 Icon(
                     Icons.Filled.OpenInFull, "Resize player", tint = MusicAccent,
                     modifier = Modifier.size(19.dp).pointerInput(Unit) {
-                        launch {
+                        coroutineScope {
+                            launch {
                             detectTapGestures {
                                 widthDpF = when {
                                     widthDpF < 200f -> 240f
@@ -5000,6 +5004,7 @@ fun MusicMiniBox(
                             detectDragGestures { change, drag ->
                                 change.consume()
                                 widthDpF = (widthDpF + drag.x / density).coerceIn(150f, 480f)
+                            }
                             }
                         }
                     }
