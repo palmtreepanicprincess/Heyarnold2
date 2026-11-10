@@ -1453,9 +1453,11 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         if (tappedLabel != null) return
         interacted = true
         tappedLabel = spot.label
-        zoomOrigin = TransformOrigin(spot.fx, spot.fy)
+        // No room-zoom on tap anymore (May, 2026-11-10): scaling the
+        // room toward the tapped spot read as the whole app shifting —
+        // worst on the lower icons. The chip's own pop is feedback
+        // enough; the room stays still.
         scope.launch {
-            roomZoom.animateTo(1.07f, tween(240))
             val d = spot.dest
             if (spot.label == "Plaza") onOpenRadio()
             else if (d != null) onHotspot(d) else onShuffle()
