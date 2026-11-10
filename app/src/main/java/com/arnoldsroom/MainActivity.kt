@@ -1090,7 +1090,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
         spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
     )
     val color = if (tapped) RoomYellow else spot.color
-    val glowAlpha = 0.16f + 0.30f * pulse
+    val glowAlpha = 0.13f + 0.17f * pulse
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1336,7 +1336,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     val pulseVal by pulseTrans.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1700), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(2100), RepeatMode.Reverse),
         label = "pulse"
     )
     fun activate(spot: Hotspot) {
