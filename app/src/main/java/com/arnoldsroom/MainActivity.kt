@@ -91,7 +91,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material.icons.filled.Repeat
@@ -665,7 +668,7 @@ fun ArnoldsRoomApp() {
     // playback itself lives in MusicService; starting a song takes
     // over the room's sound (radio stops, room song and videos
     // pause), and starting a video or the radio pauses it back.
-    var showMusicMini by remember { mutableStateOf(true) }
+    var showMusicMini by remember { mutableStateOf(false) }
     fun playSongs(queue: List<SongItem>, index: Int) {
         if (radioActive) stopRadio()
         pauseMusic()
@@ -1270,7 +1273,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     // The Plaza ring's pink reads hotter than the other colors at the
     // same alpha — its glow is dimmed a touch so all the rings pulse
     // at the same felt strength (May, 2026-11-10).
-    val glowAlpha = (0.16f + 0.28f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
+    val glowAlpha = (0.16f + 0.30f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1469,7 +1472,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
-        Hotspot(0.31f, 0.78f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
+        Hotspot(0.31f, 0.78f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
@@ -1481,7 +1484,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.130f, 0.330f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
-        Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
+        Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
@@ -1492,7 +1495,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.925f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.120f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
-        Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFF76FF03))
+        Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -1526,7 +1529,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     val pulseVal by pulseTrans.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2100), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(1700), RepeatMode.Reverse),
         label = "pulse"
     )
     fun activate(spot: Hotspot) {
@@ -3348,42 +3351,147 @@ fun MiniPlayerBox(
 // sleep timer, resume positions, favorite-moment bookmarks — plus a
 // draggable pop-up player, and background play through MusicService.
 
-private val MusicLime = Color(0xFF76FF03)
+// The music player's color (May, 2026-11-10): soft violet — the
+// pop-up wore it first, then she had the whole player match it.
+private val MusicAccent = Color(0xFFB388FF)
 
-// The music pop-up wears soft violet instead (May, 2026-11-10):
-// the neon lime was too much floating over the room.
-private val MusicPopPurple = Color(0xFFB388FF)
+// Playlists live in prefs (May, 2026-11-10 — created and filled
+// from inside the player itself): "mpl_names" holds the names
+// joined by "|||", and each "mpl_list_<name>" holds that list's
+// song ids, comma-joined.
+private fun playlistNames(prefs: SharedPreferences): List<String> =
+    (prefs.getString("mpl_names", "") ?: "").split("|||").filter { it.isNotBlank() }
+
+private fun playlistIds(prefs: SharedPreferences, name: String): List<Long> =
+    (prefs.getString("mpl_list_$name", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }
+
+private fun writePlaylist(prefs: SharedPreferences, name: String, ids: List<Long>) {
+    val names = playlistNames(prefs)
+    val ed = prefs.edit()
+    if (name !in names) ed.putString("mpl_names", (names + name).joinToString("|||"))
+    ed.putString("mpl_list_$name", ids.joinToString(","))
+    ed.apply()
+}
+
+private fun deletePlaylist(prefs: SharedPreferences, name: String) {
+    val names = playlistNames(prefs).filter { it != name }
+    prefs.edit()
+        .putString("mpl_names", names.joinToString("|||"))
+        .remove("mpl_list_$name")
+        .apply()
+}
+
+private fun addToPlaylist(prefs: SharedPreferences, name: String, songId: Long) {
+    val ids = playlistIds(prefs, name)
+    if (songId !in ids) writePlaylist(prefs, name, ids + songId)
+}
+
+@Composable
+private fun PlaylistChooserDialog(
+    prefs: SharedPreferences,
+    songTitle: String,
+    onPick: (String) -> Unit,
+    onNew: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val names = playlistNames(prefs)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to playlist") },
+        text = {
+            Column {
+                Text(songTitle, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(10.dp))
+                if (names.isEmpty()) {
+                    Text("No playlists yet — make the first one.", color = RoomTextDim)
+                }
+                names.forEach { n ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(n) }.padding(vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.PlaylistPlay, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Text(n, color = Color.White, fontSize = 15.5.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        Text("${playlistIds(prefs, n).size}", color = RoomTextDim, fontSize = 13.sp)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = onNew) {
+                    Icon(Icons.Filled.Add, null, tint = MusicAccent, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("New playlist…", color = MusicAccent, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = { },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun NewPlaylistDialog(
+    onCreate: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New playlist") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { Text("Playlist name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onCreate(name.trim()) },
+                enabled = name.isNotBlank()
+            ) { Text("Create") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
 
 @Composable
 private fun SongRow(
     s: SongItem,
     prefs: SharedPreferences,
     onPlay: () -> Unit,
-    onToggleFav: () -> Unit
+    onToggleFav: () -> Unit,
+    onLongPress: () -> Unit = { },
+    onRemove: (() -> Unit)? = null
 ) {
     val fav = prefs.getBoolean("music_fav_${s.id}", false)
     val saved = prefs.getLong("music_pos_${s.id}", 0L)
     val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
     Row(
-        Modifier.fillMaxWidth().clickable { onPlay() }.padding(vertical = 9.dp),
+        Modifier.fillMaxWidth()
+            .combinedClickable(onClick = onPlay, onLongClick = onLongPress)
+            .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             Modifier.size(42.dp).clip(CircleShape)
-                .background(if (isCurrent) MusicLime.copy(alpha = 0.2f) else Color(0xFF232A33))
-                .border(1.5.dp, if (isCurrent) MusicLime else Color(0xFF39424E), CircleShape),
+                .background(if (isCurrent) MusicAccent.copy(alpha = 0.2f) else Color(0xFF232A33))
+                .border(1.5.dp, if (isCurrent) MusicAccent else Color(0xFF39424E), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Filled.MusicNote, null,
-                tint = if (isCurrent) MusicLime else RoomTextDim,
+                tint = if (isCurrent) MusicAccent else RoomTextDim,
                 modifier = Modifier.size(20.dp)
             )
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                s.title, color = if (isCurrent) MusicLime else Color.White,
+                s.title, color = if (isCurrent) MusicAccent else Color.White,
                 fontSize = 15.5.sp, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
@@ -3395,12 +3503,18 @@ private fun SongRow(
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
-        IconButton(onClick = onToggleFav) {
-            Icon(
-                if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                if (fav) "Unfavorite" else "Favorite",
-                tint = if (fav) Color(0xFFF50057) else RoomTextDim
-            )
+        if (onRemove != null) {
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Filled.Close, "Remove from playlist", tint = RoomTextDim)
+            }
+        } else {
+            IconButton(onClick = onToggleFav) {
+                Icon(
+                    if (fav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    if (fav) "Unfavorite" else "Favorite",
+                    tint = if (fav) Color(0xFFF50057) else RoomTextDim
+                )
+            }
         }
     }
 }
@@ -3420,22 +3534,29 @@ fun MusicLibraryScreen(
     }
     var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf(0) } // 0 Songs, 1 Albums, 2 Artists, 3 Favorites
+    var tab by remember { mutableStateOf(0) } // 0 Songs, 1 Albums, 2 Artists, 3 Favorites, 4 Playlists
     var albumPick by remember { mutableStateOf<String?>(null) }
     var artistPick by remember { mutableStateOf<String?>(null) }
+    var playlistPick by remember { mutableStateOf<String?>(null) }
     var favTick by remember { mutableStateOf(0) }
+    var addToSong by remember { mutableStateOf<SongItem?>(null) }
+    var showNewPlaylist by remember { mutableStateOf(false) }
+    var pendingAdd by remember { mutableStateOf<SongItem?>(null) }
+    var deleteAsk by remember { mutableStateOf<String?>(null) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         audioGranted = ok
     }
-    // Subscribes this screen to heart toggles (favorites live in
-    // prefs, not state, so the tick is what recomposes the lists).
+    // Subscribes this screen to prefs-side changes (hearts, playlist
+    // edits): those live in prefs, not state, so the tick is what
+    // recomposes the lists.
     val favTickSnapshot = favTick
     LaunchedEffect(audioGranted) {
         if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context.contentResolver) }
     }
-    BackHandler(enabled = albumPick != null || artistPick != null) {
+    BackHandler(enabled = albumPick != null || artistPick != null || playlistPick != null) {
         albumPick = null
         artistPick = null
+        playlistPick = null
     }
     fun isFav(s: SongItem) = prefs.getBoolean("music_fav_${s.id}", false)
     fun matches(s: SongItem) =
@@ -3443,13 +3564,66 @@ fun MusicLibraryScreen(
             s.album.contains(query, true)
     val albums = songs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
     val artists = songs.groupBy { it.artist }.entries.sortedBy { it.key.lowercase() }
-    val inDetail = albumPick != null || artistPick != null
+    val inDetail = albumPick != null || artistPick != null || playlistPick != null
+
+    if (addToSong != null) {
+        val target = addToSong!!
+        PlaylistChooserDialog(
+            prefs = prefs,
+            songTitle = target.title,
+            onPick = { name ->
+                addToPlaylist(prefs, name, target.id)
+                addToSong = null
+                favTick++
+            },
+            onNew = {
+                pendingAdd = target
+                addToSong = null
+                showNewPlaylist = true
+            },
+            onDismiss = { addToSong = null }
+        )
+    }
+    if (showNewPlaylist) {
+        NewPlaylistDialog(
+            onCreate = { name ->
+                writePlaylist(prefs, name, emptyList())
+                pendingAdd?.let { addToPlaylist(prefs, name, it.id) }
+                pendingAdd = null
+                showNewPlaylist = false
+                favTick++
+            },
+            onDismiss = {
+                showNewPlaylist = false
+                pendingAdd = null
+            }
+        )
+    }
+    if (deleteAsk != null) {
+        val name = deleteAsk!!
+        AlertDialog(
+            onDismissRequest = { deleteAsk = null },
+            title = { Text("Delete playlist?") },
+            text = { Text("\"$name\" will be removed. The songs themselves stay on your phone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletePlaylist(prefs, name)
+                    if (playlistPick == name) playlistPick = null
+                    deleteAsk = null
+                    favTick++
+                }) { Text("Delete", color = Color(0xFFFF5252)) }
+            },
+            dismissButton = { TextButton(onClick = { deleteAsk = null }) { Text("Cancel") } }
+        )
+    }
+
     Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = {
                 if (inDetail) {
                     albumPick = null
                     artistPick = null
+                    playlistPick = null
                 } else onRoom()
             }) {
                 Icon(Icons.Filled.ArrowBack, "Back", tint = RoomTextDim)
@@ -3458,6 +3632,7 @@ fun MusicLibraryScreen(
                 when {
                     albumPick != null -> albumPick!!
                     artistPick != null -> artistPick!!
+                    playlistPick != null -> playlistPick!!
                     else -> "Music"
                 },
                 color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold,
@@ -3485,13 +3660,13 @@ fun MusicLibraryScreen(
             Spacer(Modifier.height(10.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(MusicLime.copy(alpha = 0.12f))
-                    .border(1.5.dp, MusicLime.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .background(MusicAccent.copy(alpha = 0.12f))
+                    .border(1.5.dp, MusicAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                     .clickable { onOpenPlayer() }
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicLime, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -3508,7 +3683,7 @@ fun MusicLibraryScreen(
                     Icon(
                         if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (MusicState.playing) "Pause" else "Play",
-                        tint = MusicLime
+                        tint = MusicAccent
                     )
                 }
             }
@@ -3526,12 +3701,13 @@ fun MusicLibraryScreen(
         if (inDetail) {
             val detailSongs = when {
                 albumPick != null -> songs.filter { it.album == albumPick }
-                else -> songs.filter { it.artist == artistPick }
+                artistPick != null -> songs.filter { it.artist == artistPick }
+                else -> playlistIds(prefs, playlistPick!!).mapNotNull { id -> songs.firstOrNull { it.id == id } }
             }.filter { matches(it) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs, 0) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
                 ) {
                     Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
@@ -3540,7 +3716,7 @@ fun MusicLibraryScreen(
                 Spacer(Modifier.width(10.dp))
                 Button(
                     onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs.shuffled(), 0) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
                 ) {
                     Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
@@ -3548,8 +3724,20 @@ fun MusicLibraryScreen(
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("${detailSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+                if (playlistPick != null) {
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { deleteAsk = playlistPick }) {
+                        Icon(Icons.Filled.Delete, "Delete playlist", tint = RoomTextDim)
+                    }
+                }
             }
             Spacer(Modifier.height(6.dp))
+            if (playlistPick != null && detailSongs.isEmpty()) {
+                Text(
+                    "This playlist is empty. Long-press any song anywhere in the library to add it here.",
+                    color = RoomTextDim, fontSize = 14.sp
+                )
+            }
             LazyColumn(Modifier.fillMaxSize()) {
                 items(detailSongs, key = { it.id }) { s ->
                     SongRow(
@@ -3561,7 +3749,15 @@ fun MusicLibraryScreen(
                         onToggleFav = {
                             prefs.edit().putBoolean("music_fav_${s.id}", !isFav(s)).apply()
                             favTick++
-                        }
+                        },
+                        onLongPress = { addToSong = s },
+                        onRemove = if (playlistPick != null) {
+                            {
+                                val name = playlistPick!!
+                                writePlaylist(prefs, name, playlistIds(prefs, name).filter { it != s.id })
+                                favTick++
+                            }
+                        } else null
                     )
                 }
             }
@@ -3570,7 +3766,7 @@ fun MusicLibraryScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = { if (songs.isNotEmpty()) onPlaySong(songs.shuffled(), 0) },
-                colors = ButtonDefaults.buttonColors(containerColor = MusicLime, contentColor = Color(0xFF10131A))
+                colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
             ) {
                 Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
@@ -3579,12 +3775,12 @@ fun MusicLibraryScreen(
         }
         Spacer(Modifier.height(8.dp))
         Row {
-            listOf("Songs", "Albums", "Artists", "Favorites").forEachIndexed { i, label ->
+            listOf("Songs", "Albums", "Artists", "Favorites", "Playlists").forEachIndexed { i, label ->
                 TextButton(onClick = { tab = i }) {
                     Text(
                         label,
-                        color = if (tab == i) MusicLime else RoomTextDim,
-                        fontWeight = FontWeight.Bold, fontSize = 15.sp
+                        color = if (tab == i) MusicAccent else RoomTextDim,
+                        fontWeight = FontWeight.Bold, fontSize = 14.5.sp
                     )
                 }
             }
@@ -3606,7 +3802,8 @@ fun MusicLibraryScreen(
                             onToggleFav = {
                                 prefs.edit().putBoolean("music_fav_${s.id}", !isFav(s)).apply()
                                 favTick++
-                            }
+                            },
+                            onLongPress = { addToSong = s }
                         )
                     }
                 }
@@ -3628,7 +3825,7 @@ fun MusicLibraryScreen(
                                     .border(1.5.dp, Color(0xFF39424E), RoundedCornerShape(9.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Album, null, tint = MusicLime, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Filled.Album, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
                             }
                             Spacer(Modifier.width(11.dp))
                             Column {
@@ -3647,7 +3844,7 @@ fun MusicLibraryScreen(
                     }
                 }
             }
-            else -> {
+            2 -> {
                 val shownArtists = artists.filter { (name, _) ->
                     query.isBlank() || name.contains(query, true)
                 }
@@ -3664,7 +3861,7 @@ fun MusicLibraryScreen(
                                     .border(1.5.dp, Color(0xFF39424E), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Person, null, tint = MusicLime, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Filled.Person, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
                             }
                             Spacer(Modifier.width(11.dp))
                             Column {
@@ -3677,6 +3874,59 @@ fun MusicLibraryScreen(
                                     "${list.size} songs • ${list.map { it.album }.distinct().size} albums",
                                     color = RoomTextDim, fontSize = 12.5.sp
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                val names = playlistNames(prefs)
+                Column(Modifier.fillMaxSize()) {
+                    Button(
+                        onClick = { showNewPlaylist = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                    ) {
+                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("New playlist", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (names.isEmpty()) {
+                        Text(
+                            "No playlists yet. Make one, then long-press songs to fill it.",
+                            color = RoomTextDim, fontSize = 14.sp
+                        )
+                    }
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(names, key = { it }) { name ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { playlistPick = name }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
+                                        .background(Color(0xFF232A33))
+                                        .border(1.5.dp, Color(0xFF39424E), RoundedCornerShape(9.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.PlaylistPlay, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                                }
+                                Spacer(Modifier.width(11.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        name, color = Color.White, fontSize = 15.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "${playlistIds(prefs, name).size} songs",
+                                        color = RoomTextDim, fontSize = 12.5.sp
+                                    )
+                                }
+                                IconButton(onClick = { deleteAsk = name }) {
+                                    Icon(Icons.Filled.Delete, "Delete playlist", tint = RoomTextDim)
+                                }
                             }
                         }
                     }
@@ -3698,6 +3948,32 @@ fun MusicPlayerScreen(
     var markTick by remember { mutableStateOf(0) }
     // Subscribes this screen to bookmark changes (they live in prefs).
     val markTickSnapshot = markTick
+    var showAddTo by remember { mutableStateOf(false) }
+    var showNewList by remember { mutableStateOf(false) }
+    if (showAddTo && song != null) {
+        PlaylistChooserDialog(
+            prefs = prefs,
+            songTitle = song.title,
+            onPick = { name ->
+                addToPlaylist(prefs, name, song.id)
+                showAddTo = false
+            },
+            onNew = {
+                showAddTo = false
+                showNewList = true
+            },
+            onDismiss = { showAddTo = false }
+        )
+    }
+    if (showNewList && song != null) {
+        NewPlaylistDialog(
+            onCreate = { name ->
+                writePlaylist(prefs, name, listOf(song.id))
+                showNewList = false
+            },
+            onDismiss = { showNewList = false }
+        )
+    }
     Column(
         Modifier.fillMaxSize().background(RoomDark).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -3709,7 +3985,7 @@ fun MusicPlayerScreen(
             Text("Now Playing", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onShrink) {
-                Icon(Icons.Filled.PictureInPictureAlt, "Pop-up player", tint = MusicLime)
+                Icon(Icons.Filled.PictureInPictureAlt, "Pop-up player", tint = MusicAccent)
             }
         }
         if (song == null) {
@@ -3725,20 +4001,20 @@ fun MusicPlayerScreen(
         Box(
             Modifier.size(208.dp).shadow(12.dp, CircleShape).clip(CircleShape)
                 .background(Color(0xFF1A2118))
-                .border(3.dp, MusicLime, CircleShape),
+                .border(3.dp, MusicAccent, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 Modifier.size(168.dp).clip(CircleShape)
-                    .border(1.5.dp, MusicLime.copy(alpha = 0.35f), CircleShape)
+                    .border(1.5.dp, MusicAccent.copy(alpha = 0.35f), CircleShape)
             )
             Icon(
-                Icons.Filled.MusicNote, null, tint = MusicLime,
+                Icons.Filled.MusicNote, null, tint = MusicAccent,
                 modifier = Modifier.size(92.dp).rotate(angle)
             )
             Box(
                 Modifier.size(26.dp).clip(CircleShape).background(RoomDark)
-                    .border(2.dp, MusicLime, CircleShape)
+                    .border(2.dp, MusicAccent, CircleShape)
             )
         }
         Spacer(Modifier.height(18.dp))
@@ -3773,7 +4049,7 @@ fun MusicPlayerScreen(
             }) {
                 Icon(
                     Icons.Filled.Shuffle, "Shuffle",
-                    tint = if (MusicState.shuffle) MusicLime else RoomTextDim
+                    tint = if (MusicState.shuffle) MusicAccent else RoomTextDim
                 )
             }
             IconButton(onClick = { musicAction(context, MusicService.ACTION_PREV) }) {
@@ -3787,7 +4063,7 @@ fun MusicPlayerScreen(
             }
             Box(
                 Modifier.size(66.dp).shadow(6.dp, CircleShape).clip(CircleShape)
-                    .background(MusicLime)
+                    .background(MusicAccent)
                     .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
                 contentAlignment = Alignment.Center
             ) {
@@ -3813,7 +4089,7 @@ fun MusicPlayerScreen(
                 Icon(
                     if (MusicState.repeatMode == 2) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
                     "Repeat",
-                    tint = if (MusicState.repeatMode > 0) MusicLime else RoomTextDim
+                    tint = if (MusicState.repeatMode > 0) MusicAccent else RoomTextDim
                 )
             }
         }
@@ -3850,11 +4126,18 @@ fun MusicPlayerScreen(
                 Text("Mark this spot", color = RoomTextDim, fontWeight = FontWeight.Bold)
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { showAddTo = true }) {
+                Icon(Icons.Filled.PlaylistAdd, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Add to playlist", color = RoomTextDim, fontWeight = FontWeight.Bold)
+            }
+        }
         val marks = prefs.getString("mmarks_${song.id}", "")?.split(",")
             ?.mapNotNull { it.toLongOrNull() } ?: emptyList()
         if (marks.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            Text("Favorite moments", color = MusicLime, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Favorite moments", color = MusicAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 items(marks, key = { it }) { m ->
                     Row(
@@ -3864,7 +4147,7 @@ fun MusicPlayerScreen(
                         }.padding(vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Bookmarks, null, tint = MusicLime, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Bookmarks, null, tint = MusicAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(9.dp))
                         Text(fmtDur(m), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
@@ -3900,7 +4183,7 @@ fun MusicMiniBox(
                 .shadow(10.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF1D1430))
-                .border(2.dp, MusicPopPurple.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                .border(2.dp, MusicAccent.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
                 .padding(12.dp)
         ) {
             Row(
@@ -3913,9 +4196,9 @@ fun MusicMiniBox(
                 },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicPopPurple, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("MUSIC", color = MusicPopPurple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("MUSIC", color = MusicAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
@@ -3933,7 +4216,7 @@ fun MusicMiniBox(
             val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
             LinearProgressIndicator(
                 progress = if (dur > 0) (MusicState.positionMs.toFloat() / dur).coerceIn(0f, 1f) else 0f,
-                color = MusicPopPurple,
+                color = MusicAccent,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(6.dp))
@@ -3942,7 +4225,7 @@ fun MusicMiniBox(
                     Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White)
                 }
                 Box(
-                    Modifier.size(42.dp).clip(CircleShape).background(MusicPopPurple)
+                    Modifier.size(42.dp).clip(CircleShape).background(MusicAccent)
                         .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
                     contentAlignment = Alignment.Center
                 ) {
