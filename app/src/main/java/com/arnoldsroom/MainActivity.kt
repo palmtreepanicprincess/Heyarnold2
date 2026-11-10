@@ -148,6 +148,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -2126,6 +2127,19 @@ fun VideoThumb(uri: Uri, modifier: Modifier = Modifier) {
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+// Section heading in the room's own grammar (May, 2026-11-10,
+// cohesion round two): a bold title over the same two-tone rule
+// the screen banners wear — dark ink line, accent line under it.
+@Composable
+fun SectionTitle(text: String, accent: Color, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(text, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.width(54.dp).height(3.dp).background(Color(0xFF10131A)))
+        Box(Modifier.width(54.dp).height(2.dp).background(accent))
+    }
+}
+
 @Composable
 fun VideoRow(
     v: VideoItem,
@@ -2144,7 +2158,7 @@ fun VideoRow(
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        VideoThumb(v.uri, Modifier.width(104.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)))
+        VideoThumb(v.uri, Modifier.width(104.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(8.dp)))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(v.title, color = if (watched) RoomTextDim else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
@@ -2415,10 +2429,9 @@ fun ShowDetailScreen(
             }
             show.seasons.forEach { (season, eps) ->
                 item {
-                    Text(
-                        "Season $season", color = RoomYellow, fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)
+                    SectionTitle(
+                        "Season $season", Color(0xFF7C4DFF),
+                        Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp)
                     )
                 }
                 items(eps) { v ->
@@ -2522,7 +2535,7 @@ fun LibraryScreen(
         if (sorted.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (title == Filter.CONTINUE.label) "Nothing half-watched right now.\nStart something from the TV and it'll wait for you here, on the bed."
+                    if (title == Filter.CONTINUE.label) "Nothing half-watched right now.\nStart something from the shelves and it'll wait for you here, on the bed."
                     else "Nothing here yet.\nDownload some movies or shows to your phone and they'll show up.",
                     color = RoomTextDim, fontSize = 15.sp, modifier = Modifier.padding(24.dp)
                 )
@@ -2543,7 +2556,7 @@ fun LibraryScreen(
                         Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF2A2F42)))
                         Column(Modifier.weight(1f).fillMaxHeight().padding(16.dp)) {
                             val sel = selected ?: sorted.first()
-                            VideoThumb(sel.uri, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)))
+                            VideoThumb(sel.uri, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(12.dp)))
                             Spacer(Modifier.height(12.dp))
                             Text(sel.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold,
                                 maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -2603,6 +2616,15 @@ fun SearchScreen(
             value = query, onValueChange = { query = it },
             placeholder = { Text("Type a title…", color = RoomTextDim) },
             singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF2979FF),
+                unfocusedBorderColor = Color(0xFF39424E),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color(0xFF2979FF),
+                focusedContainerColor = RoomCard,
+                unfocusedContainerColor = RoomCard
+            ),
             modifier = Modifier.fillMaxWidth().padding(12.dp)
         )
         LazyColumn(Modifier.fillMaxSize()) {
@@ -2670,16 +2692,15 @@ fun StatsScreen(
             }
             if (inProgress.isNotEmpty()) {
                 item {
-                    Text(
-                        "Still in the middle of",
-                        color = RoomYellow, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 6.dp)
+                    SectionTitle(
+                        "Still in the middle of", Color(0xFF00ACC1),
+                        Modifier.padding(top = 6.dp)
                     )
                 }
                 items(inProgress) { v ->
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                            .background(RoomCard).padding(horizontal = 12.dp, vertical = 9.dp),
+                            .background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -2706,7 +2727,14 @@ fun SettingsScreen(
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Settings", onRoom, accent = Color(0xFFFF5252))
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text("$videoCount videos found on this phone.", color = Color.White, fontSize = 16.sp) }
+            item {
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp)
+                ) {
+                    Text("$videoCount videos found on this phone.", color = Color.White, fontSize = 16.sp)
+                }
+            }
             if (!granted) item {
                 Button(onClick = onGrant, colors = ButtonDefaults.buttonColors(containerColor = RoomOrange)) {
                     Text("Allow access to my videos")
@@ -2716,6 +2744,10 @@ fun SettingsScreen(
                 TextButton(onClick = onClearResume) { Text("Forget all resume positions", color = RoomSky) }
             }
             item {
+              Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                    .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp)
+              ) {
                 Text(
                     "The room map — knock twice to come in:\n" +
                     "• The TV at the back — Plaza: the Nightwave Plaza radio lives on it now\n" +
@@ -2731,6 +2763,7 @@ fun SettingsScreen(
                     "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
                 )
+              }
             }
         }
     }
@@ -3283,9 +3316,9 @@ fun RadioPlayerBox(
         val density = LocalDensity.current
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
-        val widthDp = 272.dp
+        val widthDp = 292.dp
         val widthPx = with(density) { widthDp.toPx() }
-        val heightPx = with(density) { 172.dp.toPx() }
+        val heightPx = with(density) { 268.dp.toPx() }
         var offX by remember { mutableStateOf<Float?>(null) }
         var offY by remember { mutableStateOf<Float?>(null) }
         val x = (offX ?: (maxWPx - widthPx) / 2f).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
@@ -3295,66 +3328,164 @@ fun RadioPlayerBox(
             Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                 .width(widthDp)
-                .shadow(10.dp, RoundedCornerShape(16.dp))
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1B1035))
-                .border(2.5.dp, Color(0xFFFF6EC7), RoundedCornerShape(16.dp))
-                .padding(12.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
-                    detectDragGestures { change, drag ->
-                        change.consume()
-                        // Read the CURRENT offsets at drag time (the
-                        // video pop-up's original glitch was capturing
-                        // the start position once, so every drag event
-                        // snapped the box back toward where it began).
-                        val curX = offX ?: (maxWPx - widthPx) / 2f
-                        val curY = offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() })
-                        offX = (curX + drag.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-                        offY = (curY + drag.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+            // Telescopic antenna, tipped up from the cabinet's corner.
+            Canvas(
+                Modifier.width(120.dp).height(26.dp).align(Alignment.End)
+            ) {
+                val ink = Color(0xFF10131A)
+                val base = Offset(size.width * 0.06f, size.height)
+                val mid = Offset(size.width * 0.52f, size.height * 0.45f)
+                val tip = Offset(size.width * 0.96f, size.height * 0.08f)
+                drawLine(ink, base, mid, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+                drawLine(ink, mid, tip, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                drawCircle(ink, radius = 3.5.dp.toPx(), center = mid)
+                drawCircle(Color(0xFFFF6EC7), radius = 4.dp.toPx(), center = tip)
+            }
+            // The cabinet (May, 2026-11-10): the stream player is a
+            // real little radio now — brand plate, tuning dial,
+            // speaker grille, knobs — the way the video pop-up is a TV.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .shadow(10.dp, RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF2A1245))
+                    .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(18.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            val curX = offX ?: (maxWPx - widthPx) / 2f
+                            val curY = offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() })
+                            offX = (curX + drag.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                            offY = (curY + drag.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+                        }
+                    }
+                ) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFFFF3E0))
+                            .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("NIGHTWAVE PLAZA", color = Color(0xFF10131A), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier.size(9.dp).clip(CircleShape)
+                            .background(if (playing) Color(0xFFFF5252) else Color(0xFF5A2A35))
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        "ON AIR",
+                        color = if (playing) Color(0xFFFF8A80) else Color(0xFF8E7CC3),
+                        fontSize = 9.5.sp, fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.Filled.Close, "Close radio player", tint = Color(0xFFB39DDB),
+                        modifier = Modifier.size(18.dp).clickable { onClose() }
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                // The tuning dial: cream glass, FM numbers, one pink needle.
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFF3E0))
+                        .border(2.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Column {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            listOf("88", "92", "96", "100", "104", "108").forEach {
+                                Text(it, color = Color(0xFF10131A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Box(Modifier.fillMaxWidth().height(14.dp)) {
+                            Box(
+                                Modifier.fillMaxWidth().height(2.dp).align(Alignment.Center)
+                                    .background(Color(0xFF10131A).copy(alpha = 0.35f))
+                            )
+                            Box(
+                                Modifier.fillMaxHeight().width(3.dp)
+                                    .align(Alignment.CenterStart)
+                                    .offset(x = 148.dp)
+                                    .background(Color(0xFFFF6EC7))
+                            )
+                        }
+                        Text(
+                            "FM · plaza.one — vaporwave, all day",
+                            color = Color(0xFF10131A).copy(alpha = 0.7f), fontSize = 9.sp
+                        )
                     }
                 }
-            ) {
-                Icon(Icons.Filled.Radio, null, tint = Color(0xFFFF6EC7), modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "NIGHTWAVE PLAZA",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Filled.Close, "Close radio player", tint = Color(0xFFB39DDB), modifier = Modifier.size(18.dp))
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Speaker grille.
+                    Box(
+                        Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1B1035))
+                            .border(2.dp, Color(0xFF10131A), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            repeat(5) {
+                                Box(
+                                    Modifier.width(3.dp).height(48.dp).clip(RoundedCornerShape(2.dp))
+                                        .background(Color(0xFFFF6EC7).copy(alpha = 0.55f))
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier.size(38.dp).clip(CircleShape).background(Color(0xFFFFF3E0))
+                                .border(2.dp, Color(0xFF10131A), CircleShape),
+                            contentAlignment = Alignment.TopCenter
+                        ) { Box(Modifier.width(3.dp).height(10.dp).background(Color(0xFF10131A))) }
+                        Text("VOL", color = Color(0xFFB39DDB), fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier.size(38.dp).clip(CircleShape).background(Color(0xFFFFF3E0))
+                                .border(2.dp, Color(0xFF10131A), CircleShape),
+                            contentAlignment = Alignment.TopCenter
+                        ) { Box(Modifier.width(3.dp).height(10.dp).background(Color(0xFF10131A))) }
+                        Text("TUNE", color = Color(0xFFB39DDB), fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        when {
+                            buffering -> "Connecting…"
+                            playing -> "LIVE"
+                            else -> "Off"
+                        },
+                        color = if (playing) Color(0xFFFF6EC7) else Color(0xFFB39DDB),
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold
+                    )
                 }
-            }
-            Text("24/7 vaporwave radio · plaza.one", color = Color(0xFFB39DDB), fontSize = 11.5.sp)
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(Color(0xFFFF6EC7)).clickable { onToggle() },
-                    contentAlignment = Alignment.Center
+                Spacer(Modifier.height(12.dp))
+                // One chunky power key, like pressing a real button.
+                Row(
+                    Modifier.fillMaxWidth().height(46.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFFF6EC7))
+                        .border(2.5.dp, Color(0xFF10131A), RoundedCornerShape(10.dp))
+                        .clickable { onToggle() },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (playing) "Stop the stream" else "Play the stream",
-                        tint = Color(0xFF1B1035),
-                        modifier = Modifier.size(30.dp)
+                        tint = Color(0xFF10131A), modifier = Modifier.size(24.dp)
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (playing) "STOP" else "PLAY", color = Color(0xFF10131A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    when {
-                        buffering -> "Connecting…"
-                        playing -> "● LIVE"
-                        else -> "Tap play to listen"
-                    },
-                    color = if (playing) Color(0xFFFF6EC7) else Color(0xFFB39DDB),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }
@@ -3523,7 +3654,21 @@ fun MiniPlayerBox(
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .size(28.dp)
+                        .padding(3.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xB310131A))
+                        .border(1.5.dp, Color(0xFF10131A), CircleShape)
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                // Tap the corner arrows to step the TV
+                                // through sizes (May, 2026-11-10 — the
+                                // arrows "did nothing" because they only
+                                // ever dragged).
+                                val steps = listOf(180.dp, 240.dp, 300.dp, 360.dp)
+                                widthDp = steps.firstOrNull { it > widthDp + 12.dp } ?: 180.dp
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectDragGestures { change, drag ->
                                 change.consume()
@@ -3534,8 +3679,8 @@ fun MiniPlayerBox(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.OpenInFull, "Resize",
-                        tint = Color.White, modifier = Modifier.size(14.dp)
+                        Icons.Filled.OpenInFull, "Resize — tap for the next size, or drag",
+                        tint = Color.White, modifier = Modifier.size(15.dp)
                     )
                 }
             }
@@ -3665,7 +3810,8 @@ private fun PlaylistChooserDialog(
     val names = playlistNames(prefs)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add to playlist") },
+        containerColor = RoomCard,
+        title = { Text("Add to playlist", color = Color.White) },
         text = {
             Column {
                 Text(songTitle, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -3706,7 +3852,8 @@ private fun NewPlaylistDialog(
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New playlist") },
+        containerColor = RoomCard,
+        title = { Text("New playlist", color = Color.White) },
         text = {
             OutlinedTextField(
                 value = name,
@@ -3869,8 +4016,9 @@ fun MusicLibraryScreen(
         val name = deleteAsk!!
         AlertDialog(
             onDismissRequest = { deleteAsk = null },
-            title = { Text("Delete playlist?") },
-            text = { Text("\"$name\" will be removed. The songs themselves stay on your phone.") },
+            containerColor = RoomCard,
+            title = { Text("Delete playlist?", color = Color.White) },
+            text = { Text("\"$name\" will be removed. The songs themselves stay on your phone.", color = RoomTextDim) },
             confirmButton = {
                 TextButton(onClick = {
                     deletePlaylist(prefs, name)
@@ -3973,9 +4121,18 @@ fun MusicLibraryScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Search songs, albums, artists") },
-            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            placeholder = { Text("Search songs, albums, artists", color = RoomTextDim) },
+            leadingIcon = { Icon(Icons.Filled.Search, null, tint = MusicAccent) },
             singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MusicAccent,
+                unfocusedBorderColor = Color(0xFF39424E),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = MusicAccent,
+                focusedContainerColor = Color(0xFF232A33),
+                unfocusedContainerColor = Color(0xFF232A33)
+            ),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
@@ -4112,7 +4269,7 @@ fun MusicLibraryScreen(
                             Box(
                                 Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
                                     .background(Color(0xFF232A33))
-                                    .border(1.5.dp, Color(0xFF39424E), RoundedCornerShape(9.dp)),
+                                    .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Filled.Album, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
@@ -4148,7 +4305,7 @@ fun MusicLibraryScreen(
                             Box(
                                 Modifier.size(46.dp).clip(CircleShape)
                                     .background(Color(0xFF232A33))
-                                    .border(1.5.dp, Color(0xFF39424E), CircleShape),
+                                    .border(1.5.dp, Color(0xFF10131A), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Filled.Person, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
@@ -4456,6 +4613,30 @@ fun MusicPlayerScreen(
     }
 }
 
+// One reel of the cassette pop-up: a cream spool with three
+// spokes, turned by the song.
+@Composable
+private fun CassetteReel(angle: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier.graphicsLayer { rotationZ = angle }) {
+        val ink = Color(0xFF10131A)
+        drawCircle(Color(0xFFFFF3E0), radius = size.minDimension / 2f)
+        drawCircle(ink, radius = size.minDimension / 2f, style = Stroke(width = 2.5.dp.toPx()))
+        for (k in 0..2) {
+            val a = Math.toRadians((k * 120).toDouble())
+            drawLine(
+                ink,
+                Offset(center.x, center.y),
+                Offset(
+                    center.x + (size.minDimension * 0.38f) * Math.cos(a).toFloat(),
+                    center.y + (size.minDimension * 0.38f) * Math.sin(a).toFloat()
+                ),
+                strokeWidth = 3.5.dp.toPx(), cap = StrokeCap.Round
+            )
+        }
+        drawCircle(ink, radius = 4.dp.toPx(), center = center)
+    }
+}
+
 @Composable
 fun MusicMiniBox(
     onExpand: () -> Unit,
@@ -4465,15 +4646,24 @@ fun MusicMiniBox(
     val song = MusicState.current ?: return
     var offX by remember { mutableStateOf(0f) }
     var offY by remember { mutableStateOf(0f) }
+    // The reels turn while the song plays and stop with it
+    // (May, 2026-11-10: the music pop-up is a cassette player).
+    var spin by remember { mutableStateOf(0f) }
+    LaunchedEffect(MusicState.playing) {
+        while (MusicState.playing) {
+            spin = (spin + 4f) % 360f
+            delay(33)
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.align(Alignment.BottomEnd).padding(14.dp)
                 .offset { IntOffset(offX.toInt(), offY.toInt()) }
-                .width(274.dp)
+                .width(288.dp)
                 .shadow(10.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF1D1430))
-                .border(2.dp, MusicAccent.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                .border(2.5.dp, Color(0xFF10131A), RoundedCornerShape(16.dp))
                 .padding(12.dp)
         ) {
             Row(
@@ -4486,50 +4676,86 @@ fun MusicMiniBox(
                 },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("MUSIC", color = MusicAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("MUSIC · SIDE A", color = MusicAccent, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
                     modifier = Modifier.size(18.dp).clickable { onClose() }
                 )
             }
-            Spacer(Modifier.height(7.dp))
-            Text(
-                song.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { onExpand() }
-            )
-            Text(song.artist, color = RoomTextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(8.dp))
+            // The cassette itself: her handwriting on the label,
+            // the reels showing through the window.
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF120B1E))
+                    .border(2.dp, Color(0xFF10131A), RoundedCornerShape(12.dp))
+                    .clickable { onExpand() }
+                    .padding(10.dp)
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFFFFF3E0))
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        song.title, fontFamily = HandwrittenFont, color = Color(0xFF10131A),
+                        fontSize = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        song.artist, fontFamily = HandwrittenFont, color = Color(0xFF10131A).copy(alpha = 0.7f),
+                        fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(9.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CassetteReel(spin, Modifier.size(52.dp))
+                    Box(Modifier.width(56.dp).height(7.dp).background(Color(0xFF4A2C14)))
+                    CassetteReel(spin * 0.8f, Modifier.size(52.dp))
+                }
+            }
+            Spacer(Modifier.height(9.dp))
             val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
             LinearProgressIndicator(
                 progress = if (dur > 0) (MusicState.positionMs.toFloat() / dur).coerceIn(0f, 1f) else 0f,
                 color = MusicAccent,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { musicAction(context, MusicService.ACTION_PREV) }) {
-                    Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White)
-                }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Text(fmtDur(MusicState.positionMs), color = RoomTextDim, fontSize = 11.5.sp)
+                Spacer(Modifier.weight(1f))
+                Text(fmtDur(dur), color = RoomTextDim, fontSize = 11.5.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            // Chunky Walkman keys.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
-                    Modifier.size(42.dp).clip(CircleShape).background(MusicAccent)
+                    Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF2E2140))
+                        .border(2.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
+                        .clickable { musicAction(context, MusicService.ACTION_PREV) },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(21.dp)) }
+                Box(
+                    Modifier.weight(1.3f).height(42.dp).clip(RoundedCornerShape(8.dp)).background(MusicAccent)
+                        .border(2.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
                         .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         if (MusicState.playing) "Pause" else "Play",
-                        tint = Color(0xFF10131A)
+                        tint = Color(0xFF10131A), modifier = Modifier.size(24.dp)
                     )
                 }
-                IconButton(onClick = { musicAction(context, MusicService.ACTION_NEXT) }) {
-                    Icon(Icons.Filled.SkipNext, "Next", tint = Color.White)
-                }
-                Spacer(Modifier.weight(1f))
-                Text(fmtDur(MusicState.positionMs), color = RoomTextDim, fontSize = 12.sp)
+                Box(
+                    Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF2E2140))
+                        .border(2.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
+                        .clickable { musicAction(context, MusicService.ACTION_NEXT) },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(21.dp)) }
             }
         }
     }
