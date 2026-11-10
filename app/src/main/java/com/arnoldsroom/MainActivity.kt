@@ -1412,7 +1412,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.145f, 0.360f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.145f, 0.392f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
