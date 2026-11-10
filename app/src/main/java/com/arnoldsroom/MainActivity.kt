@@ -24,6 +24,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -56,8 +58,10 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Search
@@ -94,9 +98,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -346,6 +353,8 @@ fun ArnoldsRoomApp() {
         )
     }
     var pendingDest by remember { mutableStateOf<Screen?>(null) }
+    var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
+    var miniIndex by remember { mutableStateOf(0) }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -367,7 +376,7 @@ fun ArnoldsRoomApp() {
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room) startMusic()
+                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -377,9 +386,10 @@ fun ArnoldsRoomApp() {
     }
     LaunchedEffect(screen) {
         if (screen is Screen.Room) {
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && miniQueue == null) startMusic()
         } else pauseMusic()
     }
+    LaunchedEffect(miniQueue) { if (miniQueue != null) pauseMusic() }
     DisposableEffect(Unit) { onDispose { try { music?.release() } catch (e: Exception) { } } }
 
     // ----- Permission + library load -----
@@ -533,8 +543,27 @@ fun ArnoldsRoomApp() {
                 startIndex = s.startIndex,
                 fromLabel = s.fromLabel,
                 prefs = prefs,
-                onBack = { screen = Screen.Library(Filter.ALL) }
+                onBack = { screen = Screen.Library(Filter.ALL) },
+                onShrink = { idx ->
+                    miniQueue = s.queue
+                    miniIndex = idx
+                    screen = Screen.Room
+                }
             )
+        }
+        if (screen is Screen.Room) {
+            miniQueue?.let { q ->
+                MiniPlayerBox(
+                    queue = q,
+                    startIndex = miniIndex,
+                    prefs = prefs,
+                    onExpand = { idx ->
+                        miniQueue = null
+                        screen = Screen.Player(q, idx, "Mini player")
+                    },
+                    onClose = { miniQueue = null }
+                )
+            }
         }
     }
 }
@@ -1212,7 +1241,8 @@ fun PlayerScreen(
     startIndex: Int,
     fromLabel: String,
     prefs: SharedPreferences,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onShrink: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1341,6 +1371,9 @@ fun PlayerScreen(
                             speed = when (speed) { 1.0f -> 1.25f; 1.25f -> 1.5f; 1.5f -> 2.0f; 2.0f -> 0.5f; 0.5f -> 0.75f; else -> 1.0f }
                             exo.setPlaybackSpeed(speed)
                         }) { Text("${speed}x", color = RoomYellow, fontWeight = FontWeight.Bold) }
+                        IconButton(onClick = { onShrink(index) }) {
+                            Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
+                        }
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
                             Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                                 "Fullscreen", tint = Color.White)
@@ -1451,6 +1484,169 @@ fun PlayerScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// ---------- Mini player: a small, movable, resizable video box over the room ----------
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MiniPlayerBox(
+    queue: List<VideoItem>,
+    startIndex: Int,
+    prefs: SharedPreferences,
+    onExpand: (Int) -> Unit,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val exo = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val items = queue.map { MediaItem.fromUri(it.uri) }
+            val v = queue.getOrNull(startIndex)
+            val startPos = v?.let { prefs.getLong("pos_${it.id}", 0L) } ?: 0L
+            val usable = v != null && startPos > 0 &&
+                (v.durationMs == 0L || startPos < v.durationMs * 95 / 100)
+            setMediaItems(items, startIndex, if (usable) startPos else 0L)
+            prepare()
+            playWhenReady = true
+        }
+    }
+    var index by remember { mutableStateOf(startIndex) }
+    var isPlaying by remember { mutableStateOf(true) }
+
+    fun saveNow() {
+        val v = queue.getOrNull(exo.currentMediaItemIndex) ?: return
+        val pos = exo.currentPosition
+        val ed = prefs.edit()
+        if (v.durationMs > 0 && pos > v.durationMs * 95 / 100) ed.remove("pos_${v.id}")
+        else ed.putLong("pos_${v.id}", pos)
+        ed.apply()
+    }
+    DisposableEffect(exo) {
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                index = exo.currentMediaItemIndex
+            }
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+        }
+        exo.addListener(listener)
+        onDispose {
+            saveNow()
+            exo.removeListener(listener)
+            exo.release()
+        }
+    }
+    LaunchedEffect(exo) {
+        while (true) {
+            delay(5000)
+            saveNow()
+        }
+    }
+    val current = queue.getOrNull(index)
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val maxWPx = with(density) { maxWidth.toPx() }
+        val maxHPx = with(density) { maxHeight.toPx() }
+        var widthDp by remember { mutableStateOf(216.dp) }
+        var offX by remember { mutableStateOf<Float?>(null) }
+        var offY by remember { mutableStateOf<Float?>(null) }
+        val widthPx = with(density) { widthDp.toPx() }
+        val heightPx = widthPx * 9f / 16f + with(density) { 34.dp.toPx() }
+        val x = (offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() }))
+            .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+        val y = (offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() }))
+            .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+
+        Column(
+            Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .width(widthDp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF10131A))
+                .border(2.dp, RoomOrange, RoundedCornerShape(12.dp))
+        ) {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exo
+                            useController = false
+                            keepScreenOn = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    Modifier.fillMaxSize().pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { if (exo.isPlaying) exo.pause() else exo.play() }
+                        )
+                    }
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(28.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                widthDp = (widthDp + with(density) { drag.x.toDp() })
+                                    .coerceIn(140.dp, maxWidth - 8.dp)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.OpenInFull, "Resize",
+                        tint = Color.White, modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            offX = x + drag.x
+                            offY = y + drag.y
+                        }
+                    }
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    "Play or pause", tint = RoomYellow,
+                    modifier = Modifier.size(18.dp).combinedClickable(
+                        onClick = { if (exo.isPlaying) exo.pause() else exo.play() }
+                    )
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    current?.title ?: "", color = Color.White, fontSize = 11.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.Filled.Fullscreen, "Full screen", tint = Color.White,
+                    modifier = Modifier.size(18.dp).combinedClickable(
+                        onClick = { saveNow(); onExpand(exo.currentMediaItemIndex) }
+                    )
+                )
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    Icons.Filled.Close, "Close", tint = Color.White,
+                    modifier = Modifier.size(18.dp).combinedClickable(
+                        onClick = { saveNow(); onClose() }
+                    )
+                )
             }
         }
     }
