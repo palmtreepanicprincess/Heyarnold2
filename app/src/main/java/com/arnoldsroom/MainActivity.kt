@@ -535,47 +535,6 @@ object PipControl {
     var inPip by mutableStateOf(false)
 }
 
-// Set by the home-screen widget (or a fresh launch) when it wants the app
-// to jump straight back into the last-watched video.
-object ContinueRequest {
-    var videoId by mutableStateOf(-1L)
-}
-
-class ContinueWidget : AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        val prefs = context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
-        val title = prefs.getString("last_title", null) ?: "Nothing yet — watch something first"
-        val lastId = prefs.getLong("last_id", -1L)
-        val lastPos = prefs.getLong("last_pos", 0L)
-        val lastDur = prefs.getLong("last_dur", 0L)
-        for (id in ids) {
-            val views = RemoteViews(context.packageName, R.layout.widget_continue)
-            views.setTextViewText(R.id.widget_title, title)
-            if (lastDur > 0L && lastPos > 0L) {
-                views.setViewVisibility(R.id.widget_progress, android.view.View.VISIBLE)
-                views.setProgressBar(
-                    R.id.widget_progress, 1000,
-                    (lastPos * 1000L / lastDur).toInt().coerceIn(0, 1000), false
-                )
-                views.setTextViewText(R.id.widget_left, "Left off at ${fmtDur(lastPos)} — tap to jump back in!")
-            } else {
-                views.setViewVisibility(R.id.widget_progress, android.view.View.GONE)
-                views.setTextViewText(R.id.widget_left, "Tap to step into the room")
-            }
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("continue_video_id", lastId)
-            }
-            val pending = PendingIntent.getActivity(
-                context, id, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_root, pending)
-            manager.updateAppWidget(id, views)
-        }
-    }
-}
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -586,13 +545,7 @@ class MainActivity : ComponentActivity() {
         // that no amount of in-app zoom could fill, because the app
         // never got that strip of screen in the first place.
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        intent?.let { ContinueRequest.videoId = it.getLongExtra("continue_video_id", -1L) }
         setContent { ArnoldsRoomApp() }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        ContinueRequest.videoId = intent.getLongExtra("continue_video_id", -1L)
     }
 
     override fun onUserLeaveHint() {
@@ -797,19 +750,6 @@ fun ArnoldsRoomApp() {
             videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
         }
     }
-    // The home-screen widget asks to jump straight back into a video.
-    LaunchedEffect(ContinueRequest.videoId, videos) {
-        val id = ContinueRequest.videoId
-        if (id != -1L && videos.isNotEmpty()) {
-            videos.firstOrNull { it.id == id }?.let { v ->
-                pauseMusic()
-                miniQueue = null
-                screen = Screen.Player(listOf(v), 0, "Continue")
-            }
-            ContinueRequest.videoId = -1L
-        }
-    }
-
     fun go(dest: Screen, needsVideos: Boolean = true) {
         pauseMusic()
         if (needsVideos && !granted) {
