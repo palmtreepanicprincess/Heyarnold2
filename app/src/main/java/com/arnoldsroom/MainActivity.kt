@@ -1404,7 +1404,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.130f, 0.375f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     val tallSpots = listOf(
-        Hotspot(0.505f, 0.070f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
+        Hotspot(0.505f, 0.100f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.135f, 0.465f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.390f, 0.420f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.648f, 0.435f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
@@ -1412,7 +1412,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.075f, 0.540f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.715f, 0.562f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.145f, 0.392f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
+        Hotspot(0.145f, 0.360f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
