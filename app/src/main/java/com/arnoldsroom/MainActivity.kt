@@ -48,6 +48,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -946,6 +947,72 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 // outline over the TV, a bed over the bed, a door over the door — traced
 // twice: a dark halo so it reads on the busy painting, then the color.
 @Composable
+fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
+    // A living sky over the painting's own sky, drawn inside the
+    // painting's coordinate system so it tracks on any screen: at night
+    // the stars over the skylight twinkle, each on its own slow phase;
+    // by day the sun through the skylight breathes a soft glare with a
+    // couple of faint lens ghosts trailing down the light's line.
+    val stars = remember(tall) {
+        val rnd = kotlin.random.Random(if (tall) 7 else 42)
+        val n = if (tall) 12 else 16
+        List(n) {
+            val fx = if (tall) 0.38f + rnd.nextFloat() * 0.24f else 0.40f + rnd.nextFloat() * 0.20f
+            val fy = if (tall) 0.015f + rnd.nextFloat() * 0.135f else 0.02f + rnd.nextFloat() * 0.22f
+            Triple(fx, fy, rnd.nextFloat())
+        }
+    }
+    Canvas(Modifier.fillMaxSize()) {
+        val scaleF = (size.width / 900f).coerceIn(0.7f, 1.6f)
+        if (night) {
+            stars.forEach { (fx, fy, seed) ->
+                val phase = (t + seed) % 1f
+                val tw = kotlin.math.sin(phase * 2f * Math.PI.toFloat()).coerceAtLeast(0f)
+                val a = 0.10f + 0.90f * tw * tw
+                val cx = fx * size.width
+                val cy = fy * size.height
+                val r = (2.4f + 3.6f * seed) * (0.7f + 0.5f * tw) * scaleF
+                val col = Color(0xFFFFF8E1).copy(alpha = a)
+                drawCircle(col, radius = r * 0.32f, center = Offset(cx, cy))
+                drawLine(col, Offset(cx - r, cy), Offset(cx + r, cy), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
+                drawLine(col, Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
+            }
+        } else {
+            val sunFx = 0.505f
+            val sunFy = if (tall) 0.070f else 0.135f
+            val cx = sunFx * size.width
+            val cy = sunFy * size.height
+            val breathe = 0.5f + 0.5f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
+            val radius = size.width * 0.20f * (0.95f + 0.08f * breathe)
+            drawCircle(
+                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(
+                        Color(0xFFFFF9C4).copy(alpha = 0.20f + 0.10f * breathe),
+                        Color.Transparent
+                    ),
+                    center = Offset(cx, cy),
+                    radius = radius
+                ),
+                radius = radius,
+                center = Offset(cx, cy)
+            )
+            // Faint lens ghosts on the sun-through-center line.
+            val gx = size.width * 0.497f
+            drawCircle(
+                Color(0xFFB3E5FC).copy(alpha = 0.045f + 0.012f * breathe),
+                radius = 26f * scaleF,
+                center = Offset(gx, size.height * 0.60f)
+            )
+            drawCircle(
+                Color(0xFFFFF9C4).copy(alpha = 0.030f + 0.010f * breathe),
+                radius = 15f * scaleF,
+                center = Offset(gx, size.height * 0.74f)
+            )
+        }
+    }
+}
+
+@Composable
 fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, pulse: Float, onTap: () -> Unit) {
     // The chip wears the room: a circle cut out of the painting itself,
     // one-to-one, centered on the spot — so the button IS the thing it opens.
@@ -1232,6 +1299,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         roomZoom.animateTo(1f, tween(450))
     }
     var interacted by remember { mutableStateOf(false) }
+    val skyTrans = rememberInfiniteTransition(label = "skyAnim")
+    val skyT by skyTrans.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(3600, easing = LinearEasing), RepeatMode.Restart),
+        label = "skyT"
+    )
     val pulseTrans = rememberInfiniteTransition(label = "roomPulse")
     val pulseVal by pulseTrans.animateFloat(
         initialValue = 0f,
@@ -1357,6 +1431,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     )
                 }
             }
+            SkyEffects(night = night, tall = tallMode, t = skyT)
             activeSpots.forEachIndexed { i, spot ->
                 Box(
                     Modifier.offset(
