@@ -3164,6 +3164,113 @@ fun AboutScreen(onRoom: () -> Unit, onBack: () -> Unit) {
     }
 }
 
+
+// ---------- Backup video engine (plays-anything fallback) ----------
+// (May, 2026-11-10) ExoPlayer can't open some containers at all —
+// .avi is the famous one, along with its DivX/Xvid/WMV-era
+// cousins. When the main engine gives up on a file, this backup
+// engine (the same core VLC is built on) takes that one file
+// over; it plays practically anything. The library, the
+// controls, the resume spots all stay exactly the same — only
+// the surface and the transport calls branch.
+private class VlcBackup(private val context: Context) {
+    private var lib: org.videolan.libvlc.LibVLC? = null
+    var player: org.videolan.libvlc.MediaPlayer? = null
+        private set
+    private var pendingSeekMs = 0L
+    private var attachedView: android.view.TextureView? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    var onEnded: (() -> Unit)? = null
+    var onError: (() -> Unit)? = null
+    var onAspect: ((Float) -> Unit)? = null
+    var onPlayState: ((Boolean) -> Unit)? = null
+
+    private val voutCallback = object : org.videolan.libvlc.interfaces.IVLCVout.Callback {
+        override fun onNewVideoLayout(
+            vout: org.videolan.libvlc.interfaces.IVLCVout,
+            width: Int, height: Int,
+            visibleWidth: Int, visibleHeight: Int,
+            sarNum: Int, sarDen: Int
+        ) {
+            if (visibleWidth > 0 && visibleHeight > 0) {
+                val sar = if (sarNum > 0 && sarDen > 0) sarNum.toFloat() / sarDen.toFloat() else 1f
+                val a = visibleWidth * sar / visibleHeight
+                mainHandler.post { onAspect?.invoke(a) }
+            }
+        }
+        override fun onSurfacesCreated(vout: org.videolan.libvlc.interfaces.IVLCVout) { }
+        override fun onSurfacesDestroyed(vout: org.videolan.libvlc.interfaces.IVLCVout) { }
+    }
+
+    fun play(uri: Uri, startMs: Long, rate: Float) {
+        try {
+            stopPlayer()
+            val l = lib ?: org.videolan.libvlc.LibVLC(
+                context, arrayListOf("--no-video-title-show")
+            ).also { lib = it }
+            val p = org.videolan.libvlc.MediaPlayer(l)
+            player = p
+            pendingSeekMs = startMs
+            p.setEventListener { ev ->
+                when (ev.type) {
+                    org.videolan.libvlc.MediaPlayer.Event.Playing -> {
+                        if (pendingSeekMs > 0L) {
+                            try { p.time = pendingSeekMs } catch (e: Exception) { }
+                            pendingSeekMs = 0L
+                        }
+                        mainHandler.post { onPlayState?.invoke(true) }
+                    }
+                    org.videolan.libvlc.MediaPlayer.Event.Paused ->
+                        mainHandler.post { onPlayState?.invoke(false) }
+                    org.videolan.libvlc.MediaPlayer.Event.EndReached ->
+                        mainHandler.post { onEnded?.invoke() }
+                    org.videolan.libvlc.MediaPlayer.Event.EncounteredError ->
+                        mainHandler.post { onError?.invoke() }
+                }
+            }
+            val m = org.videolan.libvlc.Media(l, uri)
+            p.media = m
+            m.release()
+            try { p.setRate(rate) } catch (e: Exception) { }
+            attachedView?.let { attachToCurrent(it) }
+            p.play()
+        } catch (e: Exception) {
+            mainHandler.post { onError?.invoke() }
+        }
+    }
+
+    private fun attachToCurrent(tv: android.view.TextureView) {
+        val p = player ?: return
+        try {
+            try { p.vlcVout.detachViews() } catch (e: Exception) { }
+            p.vlcVout.setVideoView(tv)
+            p.vlcVout.attachViews(voutCallback)
+        } catch (e: Exception) { }
+    }
+
+    fun attach(tv: android.view.TextureView) {
+        attachedView = tv
+        attachToCurrent(tv)
+    }
+
+    fun detach() {
+        attachedView = null
+        try { player?.vlcVout?.detachViews() } catch (e: Exception) { }
+    }
+
+    fun stopPlayer() {
+        try { player?.stop() } catch (e: Exception) { }
+        try { player?.release() } catch (e: Exception) { }
+        player = null
+    }
+
+    fun releaseAll() {
+        stopPlayer()
+        try { lib?.release() } catch (e: Exception) { }
+        lib = null
+    }
+}
+
 // ---------- Full video player ----------
 @OptIn(UnstableApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -3193,6 +3300,11 @@ fun PlayerScreen(
             playWhenReady = true
         }
     }
+    // Backup engine state (May, 2026-11-10): vlcMode means the
+    // VLC-core backup currently owns the file on screen.
+    var vlcMode by remember { mutableStateOf(false) }
+    var vlcTriedFor by remember { mutableStateOf(-1) }
+    val vlcBackup = remember { VlcBackup(context) }
     var isPlaying by remember { mutableStateOf(true) }
     // Takeovers (May, 2026-11-10): the radio or one of her songs
     // starting hushes this video — and when the takeover clears, a
@@ -3202,10 +3314,14 @@ fun PlayerScreen(
     var hushed by remember { mutableStateOf(false) }
     LaunchedEffect(radioPause) {
         if (radioPause) {
-            if (exo.isPlaying) { hushed = true; try { exo.pause() } catch (e: Exception) { } }
+            val playingNow = if (vlcMode) vlcBackup.player?.isPlaying == true else exo.isPlaying
+            if (playingNow) {
+                hushed = true
+                try { if (vlcMode) vlcBackup.player?.pause() else exo.pause() } catch (e: Exception) { }
+            }
         } else if (hushed) {
             hushed = false
-            try { exo.play() } catch (e: Exception) { }
+            try { if (vlcMode) vlcBackup.player?.play() else exo.play() } catch (e: Exception) { }
         }
     }
     var position by remember { mutableStateOf(0L) }
@@ -3270,7 +3386,7 @@ fun PlayerScreen(
                 delay(1000)
             }
             hushed = false
-            exo.pause()
+            try { if (vlcMode) vlcBackup.player?.pause() else exo.pause() } catch (e: Exception) { }
             sleepChoice = 0
             sleepLeftMs = 0L
         }
@@ -3279,6 +3395,58 @@ fun PlayerScreen(
     LaunchedEffect(ccOn) {
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !ccOn).build()
+    }
+    // Backup-engine plumbing (May, 2026-11-10): transport calls
+    // that work whichever engine owns the file, a way back to the
+    // main engine for the next file, and the backup's own events.
+    fun playAny() {
+        if (vlcMode) { try { vlcBackup.player?.play() } catch (e: Exception) { } }
+        else { try { exo.play() } catch (e: Exception) { } }
+    }
+    fun pauseAny() {
+        if (vlcMode) { try { vlcBackup.player?.pause() } catch (e: Exception) { } }
+        else { try { exo.pause() } catch (e: Exception) { } }
+    }
+    fun seekAny(ms: Long) {
+        if (vlcMode) { try { vlcBackup.player?.time = ms.coerceAtLeast(0L) } catch (e: Exception) { } }
+        else { try { exo.seekTo(ms) } catch (e: Exception) { } }
+    }
+    fun stopVlc() {
+        vlcBackup.stopPlayer()
+        vlcMode = false
+    }
+    fun startVlcHere() {
+        val v = queue.getOrNull(index) ?: return
+        val startAt = try { exo.currentPosition } catch (e: Exception) { 0L }
+        vlcMode = true
+        hasCc = false
+        playerError = null
+        vlcBackup.play(v.uri, startAt, speed)
+    }
+    fun goToItem(i: Int) {
+        if (i !in queue.indices) return
+        if (vlcMode) stopVlc()
+        index = i
+        playerError = null
+        try { exo.seekTo(i, 0L); exo.prepare(); exo.play() } catch (e: Exception) { }
+    }
+    DisposableEffect(vlcBackup) {
+        vlcBackup.onEnded = {
+            if (index < queue.lastIndex) {
+                goToItem(index + 1)
+            } else {
+                queue.getOrNull(index)?.let { v ->
+                    prefs.edit().remove("pos_${v.id}").putBoolean("watched_${v.id}", true).apply()
+                }
+                showControls = true
+            }
+        }
+        vlcBackup.onError = {
+            playerError = "This file wouldn't play — its format may not be supported."
+            showControls = true
+        }
+        vlcBackup.onAspect = { a -> PipControl.aspect = a.coerceIn(0.42f, 2.39f) }
+        onDispose { vlcBackup.releaseAll() }
     }
     LaunchedEffect(index) {
         loadMarks()
@@ -3297,7 +3465,7 @@ fun PlayerScreen(
         }
     }
     DisposableEffect(exo) {
-        PipControl.togglePlay = { if (exo.isPlaying) exo.pause() else exo.play() }
+        PipControl.togglePlay = { if (vlcMode) { val p = vlcBackup.player; if (p?.isPlaying == true) p.pause() else p?.play() } else if (exo.isPlaying) exo.pause() else exo.play() }
         onDispose { PipControl.togglePlay = null }
     }
     DisposableEffect(Unit) {
@@ -3324,8 +3492,17 @@ fun PlayerScreen(
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                playerError = "This file wouldn't play — its format may not be supported."
-                showControls = true
+                // Some files the main engine simply can't open
+                // (.avi & friends) — hand those to the backup
+                // engine once; only if it also fails is the file
+                // truly unplayable here.
+                if (!vlcMode && vlcTriedFor != index) {
+                    vlcTriedFor = index
+                    startVlcHere()
+                } else {
+                    playerError = "This file wouldn't play — its format may not be supported."
+                    showControls = true
+                }
             }
         }
         exo.addListener(listener)
@@ -3338,11 +3515,20 @@ fun PlayerScreen(
     LaunchedEffect(exo) {
         var ticks = 0
         while (true) {
-            position = exo.currentPosition.coerceAtLeast(0)
-            duration = exo.duration.coerceAtLeast(0)
-            isPlaying = exo.isPlaying
-            index = exo.currentMediaItemIndex
-            hasCc = exo.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+            if (vlcMode) {
+                val vp = vlcBackup.player
+                if (vp != null) {
+                    position = try { vp.time.coerceAtLeast(0L) } catch (e: Exception) { position }
+                    duration = try { vp.length.coerceAtLeast(0L) } catch (e: Exception) { duration }
+                    isPlaying = try { vp.isPlaying } catch (e: Exception) { isPlaying }
+                }
+            } else {
+                position = exo.currentPosition.coerceAtLeast(0)
+                duration = exo.duration.coerceAtLeast(0)
+                isPlaying = exo.isPlaying
+                index = exo.currentMediaItemIndex
+                hasCc = exo.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+            }
             if (!seeking) sliderPos = if (duration > 0) position.toFloat() / duration else 0f
             ticks++
             if (ticks % 10 == 0) savePos(index, position)
@@ -3379,18 +3565,28 @@ fun PlayerScreen(
     val current = queue.getOrNull(index)
     val playerBox: @Composable (Modifier) -> Unit = { mod ->
         Box(mod.background(Color.Black)) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exo
-                        useController = false
-                        keepScreenOn = true
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            if (vlcMode) {
+                AndroidView(
+                    factory = { ctx ->
+                        android.view.TextureView(ctx).also { vlcBackup.attach(it) }
+                    },
+                    onRelease = { vlcBackup.detach() },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exo
+                            useController = false
+                            keepScreenOn = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             // One combined gesture layer (May, 2026-11-10): taps and
             // vertical swipes used to live in two stacked layers, and
             // the swipe layer starved the taps — once the controls
@@ -3450,8 +3646,8 @@ fun PlayerScreen(
                         }
                         if (!dragging) {
                             if (upMs - lastTapMs in 1..320 && lastTapLeft == left) {
-                                if (left) exo.seekTo((exo.currentPosition - 10_000).coerceAtLeast(0))
-                                else exo.seekTo(exo.currentPosition + 10_000)
+                                if (left) seekAny((position - 10_000).coerceAtLeast(0))
+                                else seekAny(position + 10_000)
                                 showControls = true
                                 lastTapMs = 0L
                             } else {
@@ -3475,6 +3671,7 @@ fun PlayerScreen(
                         TextButton(onClick = {
                             speed = when (speed) { 1.0f -> 1.25f; 1.25f -> 1.5f; 1.5f -> 2.0f; 2.0f -> 0.5f; 0.5f -> 0.75f; else -> 1.0f }
                             exo.setPlaybackSpeed(speed)
+                            try { vlcBackup.player?.setRate(speed) } catch (e: Exception) { }
                         }) { Text("${speed}x", color = RoomYellow, fontWeight = FontWeight.Bold) }
                         TextButton(onClick = {
                             sleepChoice = when (sleepChoice) { 0 -> 15; 15 -> 30; 30 -> 45; 45 -> 60; else -> 0 }
@@ -3492,7 +3689,7 @@ fun PlayerScreen(
                             }
                         }
                         IconButton(onClick = {
-                            val t = exo.currentPosition
+                            val t = position
                             if (!marks.contains(t)) saveMarks((marks + t).sorted())
                             showMarks = true
                         }) {
@@ -3507,8 +3704,8 @@ fun PlayerScreen(
                             // Save the exact spot first, so the mini player
                             // continues right here instead of at the last
                             // periodic save (or the beginning).
-                            savePos(exo.currentMediaItemIndex, exo.currentPosition)
-                            onShrink(exo.currentMediaItemIndex)
+                            savePos(index, position)
+                            onShrink(index)
                         }) {
                             Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
                         }
@@ -3528,6 +3725,14 @@ fun PlayerScreen(
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         )
                     }
+                    if (vlcMode && playerError == null) {
+                        Text(
+                            "Backup player — this file's format needs it", color = Color.White, fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(Color(0xB33A2A5A))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                     if (showMarks && marks.isNotEmpty()) {
                         Column(
                             Modifier.padding(start = 12.dp, top = 8.dp)
@@ -3540,7 +3745,7 @@ fun PlayerScreen(
                                     Text(
                                         fmtDur(t), color = Color.White, fontSize = 14.sp,
                                         modifier = Modifier
-                                            .combinedClickable(onClick = { exo.seekTo(t); exo.play() })
+                                            .combinedClickable(onClick = { seekAny(t); playAny() })
                                             .padding(vertical = 4.dp, horizontal = 2.dp)
                                     )
                                     IconButton(onClick = { saveMarks(marks - t) }, modifier = Modifier.size(30.dp)) {
@@ -3553,26 +3758,26 @@ fun PlayerScreen(
                     Spacer(Modifier.weight(1f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { if (exo.hasPreviousMediaItem()) exo.seekToPreviousMediaItem() },
+                        IconButton(onClick = { goToItem(index - 1) },
                             modifier = Modifier.size(52.dp)) {
                             Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(30.dp))
                         }
-                        IconButton(onClick = { exo.seekTo((exo.currentPosition - 10_000).coerceAtLeast(0)) },
+                        IconButton(onClick = { seekAny((position - 10_000).coerceAtLeast(0)) },
                             modifier = Modifier.size(52.dp)) {
                             Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color.White, modifier = Modifier.size(30.dp))
                         }
                         IconButton(
-                            onClick = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() },
+                            onClick = { hushed = false; if (isPlaying) pauseAny() else playAny() },
                             modifier = Modifier.size(68.dp).clip(CircleShape).background(RoomOrange)
                         ) {
                             Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 "Play or pause", tint = Color.White, modifier = Modifier.size(38.dp))
                         }
-                        IconButton(onClick = { exo.seekTo(exo.currentPosition + 10_000) },
+                        IconButton(onClick = { seekAny(position + 10_000) },
                             modifier = Modifier.size(52.dp)) {
                             Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = Color.White, modifier = Modifier.size(30.dp))
                         }
-                        IconButton(onClick = { if (exo.hasNextMediaItem()) exo.seekToNextMediaItem() },
+                        IconButton(onClick = { goToItem(index + 1) },
                             modifier = Modifier.size(52.dp)) {
                             Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(30.dp))
                         }
@@ -3584,7 +3789,7 @@ fun PlayerScreen(
                             value = sliderPos,
                             onValueChange = { seeking = true; sliderPos = it },
                             onValueChangeFinished = {
-                                if (duration > 0) exo.seekTo((sliderPos * duration).toLong())
+                                if (duration > 0) seekAny((sliderPos * duration).toLong())
                                 seeking = false
                             },
                             colors = SliderDefaults.colors(thumbColor = RoomOrange, activeTrackColor = RoomOrange),
@@ -3609,7 +3814,7 @@ fun PlayerScreen(
                 Row(
                     Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 86.dp)
                         .clip(RoundedCornerShape(12.dp)).background(Color(0xE61D2130))
-                        .clickable { exo.seekToNextMediaItem() }
+                        .clickable { goToItem(index + 1) }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -3658,7 +3863,7 @@ fun PlayerScreen(
                                 Row(
                                     Modifier.fillMaxWidth()
                                         .background(if (i == index) Color(0xFF2A3350) else Color.Transparent)
-                                        .combinedClickable(onClick = { exo.seekTo(i, 0L); exo.play() })
+                                        .combinedClickable(onClick = { goToItem(i) })
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -3684,7 +3889,7 @@ fun PlayerScreen(
                             Row(
                                 Modifier.fillMaxWidth()
                                     .background(if (i == index) Color(0xFF2A3350) else Color.Transparent)
-                                    .combinedClickable(onClick = { exo.seekTo(i, 0L); exo.play() })
+                                    .combinedClickable(onClick = { goToItem(i) })
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -3968,6 +4173,32 @@ fun MiniPlayerBox(
             playWhenReady = true
         }
     }
+    // Backup engine (May, 2026-11-10): same arrangement as the
+    // full player — a file ExoPlayer can't open (.avi & friends)
+    // is handed to the VLC-core backup on this TV too.
+    var vlcMode by remember { mutableStateOf(false) }
+    val vlcBackup = remember { VlcBackup(context) }
+    fun startVlcHereMini() {
+        val v = queue.getOrNull(index) ?: return
+        val startAt = try { exo.currentPosition } catch (e: Exception) { 0L }
+        vlcMode = true
+        vlcBackup.play(v.uri, startAt, 1.0f)
+    }
+    fun miniToggle() {
+        if (vlcMode) {
+            val p = vlcBackup.player
+            if (p?.isPlaying == true) p.pause() else p?.play()
+        } else if (exo.isPlaying) exo.pause() else exo.play()
+    }
+    fun miniGo(i: Int) {
+        if (i !in queue.indices) return
+        index = i
+        if (vlcMode) {
+            vlcBackup.play(queue[i].uri, 0L, 1.0f)
+        } else {
+            try { exo.seekTo(i, 0L); exo.play() } catch (e: Exception) { }
+        }
+    }
     var index by remember { mutableStateOf(startIndex) }
     var isPlaying by remember { mutableStateOf(true) }
     // Same takeover as the full player, two-way like it: hushed by
@@ -3976,15 +4207,28 @@ fun MiniPlayerBox(
     var hushed by remember { mutableStateOf(false) }
     LaunchedEffect(radioPause) {
         if (radioPause) {
-            if (exo.isPlaying) { hushed = true; try { exo.pause() } catch (e: Exception) { } }
+            val playingNow = if (vlcMode) vlcBackup.player?.isPlaying == true else exo.isPlaying
+            if (playingNow) {
+                hushed = true
+                try { if (vlcMode) vlcBackup.player?.pause() else exo.pause() } catch (e: Exception) { }
+            }
         } else if (hushed) {
             hushed = false
-            try { exo.play() } catch (e: Exception) { }
+            try { if (vlcMode) vlcBackup.player?.play() else exo.play() } catch (e: Exception) { }
         }
     }
     // The pop-up TV takes the video's own shape (May, 2026-11-10):
     // a 4:3 episode gets a 4:3 TV, a 16:9 movie a wide one.
     var videoAspect by MiniTvState.aspect
+    DisposableEffect(vlcBackup) {
+        vlcBackup.onEnded = {
+            if (index < queue.lastIndex) miniGo(index + 1) else isPlaying = false
+        }
+        vlcBackup.onError = { isPlaying = false }
+        vlcBackup.onAspect = { a -> videoAspect = a.coerceIn(0.5f, 2.39f) }
+        vlcBackup.onPlayState = { playingNow -> isPlaying = playingNow }
+        onDispose { vlcBackup.releaseAll() }
+    }
     // The shrink-in entrance plays on a genuinely new open only;
     // a TV restored from a menu trip is simply back (May,
     // 2026-11-10 — it kept coming back from Settings smaller).
@@ -3997,8 +4241,8 @@ fun MiniPlayerBox(
     }
 
     fun saveNow() {
-        val v = queue.getOrNull(exo.currentMediaItemIndex) ?: return
-        val pos = exo.currentPosition
+        val v = queue.getOrNull(if (vlcMode) index else exo.currentMediaItemIndex) ?: return
+        val pos = if (vlcMode) (try { vlcBackup.player?.time ?: 0L } catch (e: Exception) { 0L }) else exo.currentPosition
         val ed = prefs.edit()
         if (v.durationMs > 0 && pos > v.durationMs * 95 / 100) {
             ed.remove("pos_${v.id}")
@@ -4018,6 +4262,9 @@ fun MiniPlayerBox(
                 index = exo.currentMediaItemIndex
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayerError(error: PlaybackException) {
+                if (!vlcMode) startVlcHereMini()
+            }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.height > 0 && videoSize.width > 0) {
                     videoAspect = (videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
@@ -4107,21 +4354,31 @@ fun MiniPlayerBox(
                     .clip(RoundedCornerShape(8.dp)).background(Color.Black)
                     .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
             ) {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            player = exo
-                            useController = false
-                            keepScreenOn = true
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (vlcMode) {
+                    AndroidView(
+                        factory = { ctx ->
+                            android.view.TextureView(ctx).also { vlcBackup.attach(it) }
+                        },
+                        onRelease = { vlcBackup.detach() },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                player = exo
+                                useController = false
+                                keepScreenOn = true
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
                 Box(
                     Modifier.fillMaxSize().pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() }
+                            onTap = { hushed = false; miniToggle() }
                         )
                     }
                 )
@@ -4194,7 +4451,7 @@ fun MiniPlayerBox(
                 Icon(
                     Icons.Filled.SkipPrevious, "Previous", tint = Color.White,
                     modifier = Modifier.size(18.dp).combinedClickable(
-                        onClick = { hushed = false; try { exo.seekToPreviousMediaItem(); exo.play() } catch (e: Exception) { } }
+                        onClick = { hushed = false; miniGo(index - 1) }
                     )
                 )
                 Spacer(Modifier.width(10.dp))
@@ -4202,21 +4459,21 @@ fun MiniPlayerBox(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     "Play or pause", tint = RoomYellow,
                     modifier = Modifier.size(18.dp).combinedClickable(
-                        onClick = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() }
+                        onClick = { hushed = false; miniToggle() }
                     )
                 )
                 Spacer(Modifier.width(10.dp))
                 Icon(
                     Icons.Filled.SkipNext, "Next", tint = Color.White,
                     modifier = Modifier.size(18.dp).combinedClickable(
-                        onClick = { hushed = false; try { exo.seekToNextMediaItem(); exo.play() } catch (e: Exception) { } }
+                        onClick = { hushed = false; miniGo(index + 1) }
                     )
                 )
                 Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.Fullscreen, "Full screen", tint = Color.White,
                     modifier = Modifier.size(18.dp).combinedClickable(
-                        onClick = { saveNow(); onExpand(exo.currentMediaItemIndex) }
+                        onClick = { saveNow(); onExpand(if (vlcMode) index else exo.currentMediaItemIndex) }
                     )
                 )
                 Spacer(Modifier.width(10.dp))
@@ -5005,31 +5262,31 @@ fun MusicPlayerScreen(
             Text("Nothing playing — pick a song from the library.", color = RoomTextDim, fontSize = 15.sp)
             return@Column
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.weight(1f))
         // The disc turns as the song plays (a half-turn every six
         // seconds) and freezes when paused — its angle is the play
         // position itself, so no separate animation state can drift.
         val angle = (MusicState.positionMs / 1000f * 30f) % 360f
         Box(
-            Modifier.size(208.dp).shadow(12.dp, CircleShape).clip(CircleShape)
+            Modifier.size(238.dp).shadow(12.dp, CircleShape).clip(CircleShape)
                 .background(Color(0xFF1A2118))
                 .border(3.dp, MusicAccent, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Box(
-                Modifier.size(168.dp).clip(CircleShape)
+                Modifier.size(196.dp).clip(CircleShape)
                     .border(1.5.dp, MusicAccent.copy(alpha = 0.35f), CircleShape)
             )
             Icon(
                 Icons.Filled.MusicNote, null, tint = MusicAccent,
-                modifier = Modifier.size(92.dp).rotate(angle)
+                modifier = Modifier.size(106.dp).rotate(angle)
             )
             Box(
-                Modifier.size(26.dp).clip(CircleShape).background(RoomDark)
+                Modifier.size(30.dp).clip(CircleShape).background(RoomDark)
                     .border(2.dp, MusicAccent, CircleShape)
             )
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(22.dp))
         Text(
             song.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold,
             maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
@@ -5144,6 +5401,14 @@ fun MusicPlayerScreen(
                 Spacer(Modifier.width(5.dp))
                 Text("Add to playlist", color = RoomTextDim, fontWeight = FontWeight.Bold)
             }
+        }
+        val hasMarks = (prefs.getString("mmarks_${song.id}", "") ?: "").isNotBlank()
+        if (!hasMarks) {
+            // Most songs have no favorite moments, so nothing
+            // fills the bottom of the screen — let the empty
+            // space sit under the controls instead of everything
+            // crowding into the top half (May, 2026-11-10).
+            Spacer(Modifier.weight(1f))
         }
         val marks = prefs.getString("mmarks_${song.id}", "")?.split(",")
             ?.mapNotNull { it.toLongOrNull() } ?: emptyList()

@@ -23,6 +23,10 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        // The backup video engine (libVLC) ships native code;
+        // arm64 covers the Fold, the Razr, and nearly every
+        // modern phone, and keeps the app from ballooning.
+        ndk { abiFilters.add("arm64-v8a") }
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
@@ -76,4 +80,5 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
+    implementation("org.videolan.android:libvlc-all:3.6.0")
 }
