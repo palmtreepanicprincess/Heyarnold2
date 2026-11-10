@@ -51,7 +51,16 @@ val fetchBalooBoldFont = tasks.register<Exec>("fetchBalooBoldFont") {
         "https://fonts.gstatic.com/s/baloo2/v23/wXK0E3kTposypRydzVT08TS3JnAmtdj9yqpv.ttf"
     )
 }
-tasks.named("preBuild") { dependsOn(fetchBalooFont); dependsOn(fetchBalooBoldFont) }
+val caveatFile = layout.projectDirectory.file("src/main/res/font/caveat.ttf").asFile
+val fetchCaveatFont = tasks.register<Exec>("fetchCaveatFont") {
+    onlyIf { !caveatFile.exists() || caveatFile.length() < 10_000 }
+    doFirst { caveatFile.parentFile.mkdirs() }
+    commandLine(
+        "curl", "-g", "-fL", "--retry", "3", "-o", caveatFile.absolutePath,
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/caveat/Caveat%5Bwght%5D.ttf"
+    )
+}
+tasks.named("preBuild") { dependsOn(fetchBalooFont); dependsOn(fetchBalooBoldFont); dependsOn(fetchCaveatFont) }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
