@@ -46,7 +46,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -926,9 +930,13 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 // outline over the TV, a bed over the bed, a door over the door — traced
 // twice: a dark halo so it reads on the busy painting, then the color.
 @Composable
-fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, onTap: () -> Unit) {
+fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boolean, compact: Boolean, pulse: Float, onTap: () -> Unit) {
     // The chip wears the room: a circle cut out of the painting itself,
     // one-to-one, centered on the spot — so the button IS the thing it opens.
+    // Around it, just enough dressing to lift it off the wall: a soft glow
+    // in the spot's own color, a drop shadow, and a two-tone rim (a dark
+    // ink ring outside, the spot's color inside). The glow breathes with
+    // the room's pulse until she taps something.
     val density = LocalDensity.current
     val chipDp = if (compact) 52.dp else 68.dp
     val frac = with(density) { chipDp.toPx() } / imgWpx.coerceAtLeast(1).toFloat()
@@ -941,26 +949,55 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
         if (shown) 1f else 0.3f,
         spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
     )
-    val color = spot.color
+    val color = if (tapped) RoomYellow else spot.color
+    val glowAlpha = 0.16f + 0.30f * pulse
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .size(chipDp)
                 .scale(if (tapped) scale.value * 1.18f else scale.value)
-                .alpha(if (shown) 1f else 0f)
-                .clip(CircleShape)
-                .background(Color(0xFF10131A))
-                .border(2.5.dp, if (tapped) RoomYellow else color, CircleShape)
-                .clickable { onTap() },
+                .alpha(if (shown) 1f else 0f),
             contentAlignment = Alignment.Center
         ) {
-            if (crop != null) {
-                Image(
-                    bitmap = crop.asImageBitmap(),
-                    contentDescription = spot.label,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+            // The halo: the spot's color, breathed out around the circle.
+            Box(
+                Modifier
+                    .size(chipDp)
+                    .scale(1.5f)
+                    .clip(CircleShape)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.radialGradient(
+                            listOf(color.copy(alpha = glowAlpha), Color.Transparent)
+                        )
+                    )
+            )
+            // The circle itself: shadow first so it floats, then the dark
+            // ink ring, then inside it the painting crop with its color rim.
+            Box(
+                Modifier
+                    .size(chipDp)
+                    .shadow(7.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color(0xFF10131A))
+                    .clickable { onTap() },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier
+                        .size(chipDp - 5.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, color, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (crop != null) {
+                        Image(
+                            bitmap = crop.asImageBitmap(),
+                            contentDescription = spot.label,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
             }
         }
         Spacer(Modifier.height(3.dp))
@@ -1178,8 +1215,17 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         roomZoom.snapTo(1.05f)
         roomZoom.animateTo(1f, tween(450))
     }
+    var interacted by remember { mutableStateOf(false) }
+    val pulseTrans = rememberInfiniteTransition(label = "roomPulse")
+    val pulseVal by pulseTrans.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1700), RepeatMode.Reverse),
+        label = "pulse"
+    )
     fun activate(spot: Hotspot) {
         if (tappedLabel != null) return
+        interacted = true
         tappedLabel = spot.label
         zoomOrigin = TransformOrigin(spot.fx, spot.fy)
         scope.launch {
@@ -1213,9 +1259,20 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         val roomBitmap = rememberRoomBitmap(tallMode, night)
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
             ?: if (tallMode) 783f / 2007f else 1704f / 2048f
-        var drawnW = maxWDp
-        var drawnH = maxWDp / aspect
-        if (drawnH > maxHDp) { drawnH = maxHDp; drawnW = maxHDp * aspect }
+        var fitW = maxWDp
+        var fitH = maxWDp / aspect
+        if (fitH > maxHDp) { fitH = maxHDp; fitW = maxHDp * aspect }
+        // Adaptive zoom: the two layouts (wide and tall) stay, but when a
+        // screen's shape doesn't match the painting's, pure fit leaves
+        // black bars. Zoom in a little — up to 10% — to fill more of the
+        // screen. The spots are placed from this same rect, and the chips
+        // crop from it too, so the buttons always sit exactly on their
+        // things, on any screen.
+        val zoomW = maxWDp / fitW
+        val zoomH = maxHDp / fitH
+        val fillZoom = (if (zoomW < zoomH) zoomW else zoomH).coerceAtMost(1.10f)
+        val drawnW = fitW * fillZoom
+        val drawnH = fitH * fillZoom
         val offX = (maxWDp - drawnW) / 2
         val offY = (maxHDp - drawnH) / 2
         // The corner toggles wear the room too: a crop of the sky behind them,
@@ -1236,12 +1293,14 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         ) {
             Crossfade(targetState = roomBitmap, animationSpec = tween(450), label = "roomArt") { bmp ->
                 if (bmp != null) {
-                    Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = "Arnold's room",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    Box(Modifier.offset(x = offX, y = offY).size(width = drawnW, height = drawnH)) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Arnold's room",
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     Box(
                         Modifier.fillMaxSize().background(
@@ -1270,6 +1329,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     index = i,
                     tapped = tappedLabel == spot.label,
                     compact = tallMode,
+                    pulse = if (interacted) 0.45f else pulseVal,
                     onTap = { activate(spot) }
                 )
             }
