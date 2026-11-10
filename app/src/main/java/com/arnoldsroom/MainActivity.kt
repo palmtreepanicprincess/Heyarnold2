@@ -948,6 +948,9 @@ fun ArnoldsRoomApp() {
     val libTick = libVersion
     MaterialTheme(typography = cartoonTypography()) {
     Box(Modifier.fillMaxSize().background(RoomDark)) {
+        if (screen !is Screen.Room && screen !is Screen.Player && screen !is Screen.MusicPlayer) {
+            RoomBackdrop()
+        }
         AnimatedContent(
             targetState = screen,
             transitionSpec = {
@@ -2187,6 +2190,28 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
 }
 
 // ---------- Shared bits ----------
+
+// The room, dimmed, behind every list screen (May, 2026-11-10,
+// cohesion round three): the painting itself — in whichever of
+// the four lights the room is in — glows faintly through a dark
+// scrim, so walking into a list feels like stepping a few feet
+// deeper into the same room rather than leaving it. The players
+// keep their own black worlds; the lists stay fully readable.
+@Composable
+fun RoomBackdrop() {
+    val bmp = rememberRoomBitmap(false, RoomNightState.phase)
+    Box(Modifier.fillMaxSize()) {
+        Crossfade(targetState = bmp, animationSpec = tween(850), label = "backdropArt") { b ->
+            if (b != null) {
+                Image(b.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                Box(Modifier.fillMaxSize())
+            }
+        }
+        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = 0.88f)))
+    }
+}
+
 @Composable
 fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, right: @Composable () -> Unit = {}) {
     // Every list screen now opens with a slice of the room itself:
@@ -4158,7 +4183,7 @@ fun MusicLibraryScreen(
         )
     }
 
-    Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
         val bannerM = rememberRoomBitmap(false, RoomNightState.phase)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
