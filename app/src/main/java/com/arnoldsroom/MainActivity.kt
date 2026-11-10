@@ -3557,11 +3557,11 @@ fun RadioPlayerBox(
         DisposableEffect(Unit) { onDispose { PopRects.radio = null } }
         val widthDp = widthDpF.dp
         val widthPx = with(density) { widthDp.toPx() }
-        val heightPx = widthPx * (268f / 292f)
+        val heightPx = widthPx * (268f / 292f) + with(density) { 30.dp.toPx() }
         var offX by RadioBoxState.offX
         var offY by RadioBoxState.offY
         val x = (offX ?: (maxWPx - widthPx) / 2f).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-        val y = (offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() }))
+        val y = (offY ?: (maxHPx - heightPx - with(density) { 118.dp.toPx() }))
             .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
         Column(
             Modifier
@@ -3610,7 +3610,7 @@ fun RadioPlayerBox(
                         detectDragGestures { change, drag ->
                             change.consume()
                             val curX = offX ?: (maxWPx - widthPx) / 2f
-                            val curY = offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() })
+                            val curY = offY ?: (maxHPx - heightPx - with(density) { 118.dp.toPx() })
                             val d = PopRects.radio?.let { slideDelta(it, drag.x, drag.y, PopRects.others("radio")) } ?: Offset(drag.x, drag.y)
                             offX = (curX + d.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
                             offY = (curY + d.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
