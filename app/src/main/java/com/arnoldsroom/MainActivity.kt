@@ -87,6 +87,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -148,6 +152,12 @@ val RoomOrange = Color(0xFFF26D21)
 val RoomYellow = Color(0xFFFFC93C)
 val RoomCard = Color(0xFF1D2130)
 val RoomTextDim = Color(0xFFB9C2CC)
+
+val CartoonFont = FontFamily(
+    Font(R.font.baloo2, FontWeight.Normal),
+    Font(R.font.baloo2, FontWeight.SemiBold),
+    Font(R.font.baloo2, FontWeight.Bold)
+)
 
 // ---------- Data ----------
 data class VideoItem(
@@ -466,6 +476,7 @@ fun ArnoldsRoomApp() {
         screen = if (screen is Screen.Player) Screen.Library(Filter.ALL) else Screen.Room
     }
 
+    MaterialTheme(typography = Typography(defaultFontFamily = CartoonFont)) {
     Box(Modifier.fillMaxSize().background(RoomDark)) {
         AnimatedContent(
             targetState = screen,
@@ -602,6 +613,7 @@ fun ArnoldsRoomApp() {
             }
         }
     }
+    }
 }
 
 
@@ -645,7 +657,8 @@ fun rememberRoomBitmap(tall: Boolean, night: Boolean): Bitmap? {
 
 // ---------- The Room (home) ----------
 data class Hotspot(
-    val fx: Float, val fy: Float, val label: String, val icon: ImageVector, val dest: Screen?
+    val fx: Float, val fy: Float, val label: String, val icon: ImageVector, val dest: Screen?,
+    val color: Color
 )
 
 fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
@@ -660,7 +673,7 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: () -> Unit) {
+fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: Boolean, onTap: () -> Unit) {
     val scale = remember { Animatable(0.6f) }
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -686,11 +699,11 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
     ) {
         Box(
             Modifier
-                .size(56.dp)
+                .size(if (compact) 42.dp else 56.dp)
                 .shadow(7.dp, CircleShape)
                 .clip(CircleShape)
                 .background(if (tapped) RoomOrange else Color(0xF210131A))
-                .border(2.5.dp, if (tapped) RoomYellow else Color(0xFFFFE9A8), CircleShape),
+                .border(2.5.dp, if (tapped) RoomYellow else spot.color, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             if (art != null) {
@@ -708,12 +721,12 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
         Spacer(Modifier.height(2.dp))
         Text(
             spot.label,
-            color = Color.White,
-            fontSize = 9.sp,
+            color = Color(0xFF10131A),
+            fontSize = if (compact) 9.sp else 10.5.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xAA10131A))
+                .background(spot.color.copy(alpha = 0.92f))
                 .padding(horizontal = 5.dp, vertical = 1.dp)
         )
     }
@@ -723,24 +736,24 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: ()
 @Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
-        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
-        Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search),
-        Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories),
-        Hotspot(0.635f, 0.395f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL)),
-        Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE)),
-        Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES)),
-        Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null),
-        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings)
+        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
+        Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
+        Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFFB388FF)),
+        Hotspot(0.635f, 0.395f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF6E40)),
+        Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF69F0AE)),
+        Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFFF4081)),
+        Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
+        Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
     )
     val tallSpots = listOf(
-        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
-        Hotspot(0.122f, 0.461f, "Search", Icons.Filled.Search, Screen.Search),
-        Hotspot(0.502f, 0.390f, "Shelves", Icons.Filled.Folder, Screen.Categories),
-        Hotspot(0.564f, 0.401f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL)),
-        Hotspot(0.506f, 0.463f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE)),
-        Hotspot(0.071f, 0.527f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES)),
-        Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null),
-        Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings)
+        Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFFD740)),
+        Hotspot(0.122f, 0.461f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF40C4FF)),
+        Hotspot(0.502f, 0.390f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFFB388FF)),
+        Hotspot(0.564f, 0.401f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF6E40)),
+        Hotspot(0.506f, 0.463f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF69F0AE)),
+        Hotspot(0.071f, 0.527f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFFF4081)),
+        Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF18FFFF)),
+        Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFFAB91))
     )
     var tappedLabel by remember { mutableStateOf<String?>(null) }
     var zoomOrigin by remember { mutableStateOf(TransformOrigin.Center) }
@@ -806,12 +819,18 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         activeSpots.forEachIndexed { i, spot ->
             val cx = offX + drawnW * spot.fx
             val cy = offY + drawnH * spot.fy
-            Box(Modifier.offset(x = cx - 30.dp, y = cy - 30.dp)) {
+            Box(
+                Modifier.offset(
+                    x = cx - if (tallMode) 27.dp else 30.dp,
+                    y = cy - if (tallMode) 27.dp else 30.dp
+                )
+            ) {
                 RoomChip(
                     spot = spot,
                     index = i,
                     tapped = tappedLabel == spot.label,
                     art = crops[spot.label],
+                    compact = tallMode,
                     onTap = { activate(spot) }
                 )
             }
