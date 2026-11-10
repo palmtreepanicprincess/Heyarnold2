@@ -202,6 +202,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -539,6 +540,10 @@ fun musicAction(context: Context, action: String, build: Intent.() -> Unit = {})
 object PipControl {
     var shouldEnter by mutableStateOf(false)
     var inPip by mutableStateOf(false)
+    // The playing video's real shape, reported by the players —
+    // the floating window (and the in-app pop-up TV) take it on, so
+    // 4:3 shows get a 4:3 window instead of a 16:9 frame.
+    var aspect by mutableStateOf(16f / 9f)
 }
 
 class MainActivity : ComponentActivity() {
@@ -558,9 +563,10 @@ class MainActivity : ComponentActivity() {
         super.onUserLeaveHint()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && PipControl.shouldEnter) {
             try {
+                val a = PipControl.aspect.coerceIn(0.42f, 2.39f)
                 enterPictureInPictureMode(
                     PictureInPictureParams.Builder()
-                        .setAspectRatio(Rational(16, 9))
+                        .setAspectRatio(Rational((a * 1000).toInt(), 1000))
                         .build()
                 )
             } catch (e: Exception) {
@@ -748,6 +754,23 @@ fun ArnoldsRoomApp() {
         ) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
+    }
+    // Keeper (May, 2026-11-10 — "make the app's music play in the
+    // settings too"): while the ambience is wanted, check every
+    // couple of seconds and restart the song if anything stopped it
+    // along the way, so it can never silently go missing from a
+    // screen where it belongs.
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone, radioActive, MusicState.playing) {
+        val wanted = musicOn && miniQueue == null && doorGone && !radioActive && !MusicState.playing &&
+            screen !is Screen.Player && screen !is Screen.MusicPlayer
+        if (wanted) {
+            while (true) {
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    try { if (music?.isPlaying != true) startMusic() } catch (e: Exception) { }
+                }
+                delay(2000)
+            }
+        }
     }
     // No status bar anywhere in the app — May asked for it gone
     // altogether (it used to come back outside the room and stay).
@@ -1014,7 +1037,7 @@ fun ArnoldsRoomApp() {
             )
             }
         }
-        if (screen is Screen.Room) {
+        if (doorGone && screen !is Screen.Player) {
             miniQueue?.let { q ->
                 MiniPlayerBox(
                     queue = q,
@@ -2580,17 +2603,18 @@ fun SettingsScreen(
             }
             item {
                 Text(
-                    "The room map:\n" +
-                    "• TV — all your videos\n" +
-                    "• Shelves — categories (Movies, TV Shows, Favorites, Unsorted)\n" +
+                    "The room map — knock twice to come in:\n" +
+                    "• The TV at the back — Plaza: the Nightwave Plaza radio lives on it now\n" +
+                    "• Shelves — categories: every video list lives behind them\n" +
                     "• Bed — continue watching, right where you left off\n" +
                     "• Window — search\n" +
                     "• Fish tank — favorites\n" +
-                    "• Skylight — recently added\n" +
-                    "• Remote on the rug — shuffle: play something random\n" +
+                    "• Remote on the rug — shuffle a random video\n" +
+                    "• Joystick on the rug — your music: songs, albums, artists, favorites, and playlists you make yourself\n" +
                     "• Door — settings (you're here)\n\n" +
-                    "The song plays while you're in the room and pauses the moment you tap anything, or leave the app.\n\n" +
-                    "Long-press a video anywhere to file it or favorite it. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
+                    "How the sound works: the room song is the app's ambience. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
+                    "Every list wears a strip of the room's painting at the top, in the same day or night as the room. Flip day and night any time with the sun-and-moon button in the room, and the star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
+                    "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
                 )
             }
@@ -2721,12 +2745,13 @@ fun PlayerScreen(
 
     // Picture-in-picture: while an episode is playing, leaving the app pops
     // the video out into a floating window on top of everything else.
-    LaunchedEffect(isPlaying) {
+    val pipAspect = PipControl.aspect
+    LaunchedEffect(isPlaying, pipAspect) {
         PipControl.shouldEnter = isPlaying
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             activity?.setPictureInPictureParams(
                 PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
+                    .setAspectRatio(Rational((pipAspect.coerceIn(0.42f, 2.39f) * 1000).toInt(), 1000))
                     .setAutoEnterEnabled(isPlaying)
                     .build()
             )
@@ -2749,6 +2774,12 @@ fun PlayerScreen(
                 index = exo.currentMediaItemIndex
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.height > 0 && videoSize.width > 0) {
+                    PipControl.aspect = (videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
+                        .coerceIn(0.42f, 2.39f)
+                }
+            }
             override fun onPlayerError(error: PlaybackException) {
                 playerError = "This file wouldn't play — its format may not be supported."
                 showControls = true
@@ -3256,6 +3287,9 @@ fun MiniPlayerBox(
             try { exo.play() } catch (e: Exception) { }
         }
     }
+    // The pop-up TV takes the video's own shape (May, 2026-11-10):
+    // a 4:3 episode gets a 4:3 TV, a 16:9 movie a wide one.
+    var videoAspect by remember { mutableStateOf(16f / 9f) }
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
@@ -3283,6 +3317,12 @@ fun MiniPlayerBox(
                 index = exo.currentMediaItemIndex
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.height > 0 && videoSize.width > 0) {
+                    videoAspect = (videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height)
+                        .coerceIn(0.5f, 2.39f)
+                }
+            }
         }
         exo.addListener(listener)
         onDispose {
@@ -3308,7 +3348,7 @@ fun MiniPlayerBox(
         var offX by remember { mutableStateOf<Float?>(null) }
         var offY by remember { mutableStateOf<Float?>(null) }
         val widthPx = with(density) { widthDp.toPx() }
-        val heightPx = widthPx * 9f / 16f + with(density) { 98.dp.toPx() }
+        val heightPx = widthPx / videoAspect + with(density) { 98.dp.toPx() }
         val x = (offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() }))
             .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
         val y = (offY ?: (maxHPx - heightPx - with(density) { 64.dp.toPx() }))
@@ -3344,7 +3384,7 @@ fun MiniPlayerBox(
                 drawCircle(Color(0xFF10131A), radius = 4.dp.toPx(), center = tipR)
             }
             Box(
-                Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                Modifier.fillMaxWidth().aspectRatio(videoAspect)
                     .clip(RoundedCornerShape(8.dp)).background(Color.Black)
                     .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(8.dp))
             ) {
@@ -3418,10 +3458,24 @@ fun MiniPlayerBox(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
+                    Icons.Filled.SkipPrevious, "Previous", tint = Color.White,
+                    modifier = Modifier.size(18.dp).combinedClickable(
+                        onClick = { hushed = false; try { exo.seekToPreviousMediaItem(); exo.play() } catch (e: Exception) { } }
+                    )
+                )
+                Spacer(Modifier.width(10.dp))
+                Icon(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     "Play or pause", tint = RoomYellow,
                     modifier = Modifier.size(18.dp).combinedClickable(
                         onClick = { hushed = false; if (exo.isPlaying) exo.pause() else exo.play() }
+                    )
+                )
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    Icons.Filled.SkipNext, "Next", tint = Color.White,
+                    modifier = Modifier.size(18.dp).combinedClickable(
+                        onClick = { hushed = false; try { exo.seekToNextMediaItem(); exo.play() } catch (e: Exception) { } }
                     )
                 )
                 Spacer(Modifier.weight(1f))
