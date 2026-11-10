@@ -561,7 +561,17 @@ fun ArnoldsRoomApp() {
     var pendingShuffle by remember { mutableStateOf(false) }
     var miniQueue by remember { mutableStateOf<List<VideoItem>?>(null) }
     var miniIndex by remember { mutableStateOf(0) }
-    var musicOn by remember { mutableStateOf(true) }
+    // Start silent if the phone is silenced (May, 2026-11-10): when
+    // the ringer is on vibrate or fully off, the app opens muted.
+    // The Music toggle can still turn it on by hand.
+    var musicOn by remember {
+        mutableStateOf(
+            try {
+                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                am.ringerMode == android.media.AudioManager.RINGER_MODE_NORMAL
+            } catch (e: Exception) { true }
+        )
+    }
     var doorGone by remember { mutableStateOf(false) }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
