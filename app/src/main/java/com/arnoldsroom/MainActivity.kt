@@ -556,7 +556,7 @@ fun ArnoldsRoomApp() {
     DisposableEffect(lifecycleOwner, screen) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn) startMusic()
+                Lifecycle.Event.ON_START -> if (screen is Screen.Room && miniQueue == null && musicOn && doorGone) startMusic()
                 Lifecycle.Event.ON_STOP -> pauseMusic()
                 else -> { }
             }
@@ -564,8 +564,10 @@ fun ArnoldsRoomApp() {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(screen, musicOn, miniQueue) {
-        if (screen is Screen.Room && musicOn && miniQueue == null) {
+    LaunchedEffect(screen, musicOn, miniQueue, doorGone) {
+        // The song waits until the doors have fully opened — no music
+        // while you're still standing outside knocking.
+        if (screen is Screen.Room && musicOn && miniQueue == null && doorGone) {
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) startMusic()
         } else pauseMusic()
     }
