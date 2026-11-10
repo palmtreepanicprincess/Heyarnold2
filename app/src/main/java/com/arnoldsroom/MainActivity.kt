@@ -1051,14 +1051,16 @@ fun ArnoldsRoomApp() {
                 onPick = { navTo(Screen.Library(it) },
                 onShows = { navTo(Screen.Shows) },
                 onMovieFolders = { navTo(Screen.MovieFolders) },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.Shows -> ShowsScreen(
                 shows = detectShows(videos, ::catOf),
                 isWatched = ::isWatched,
                 savedPos = ::savedPos,
                 onPick = { navTo(Screen.ShowDetail(it) },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.ShowDetail -> {
                 val show = detectShows(videos, ::catOf).firstOrNull { it.title == s.showTitle }
@@ -1070,7 +1072,8 @@ fun ArnoldsRoomApp() {
                         savedPos = ::savedPos,
                         onToggleWatched = ::toggleWatched,
                         onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.showTitle) },
-                        onRoom = { navTo(Screen.Room) }
+                        onRoom = { navTo(Screen.Room) },
+                        onBack = { navigateBack() }
                     )
                 } else {
                     ShowsScreen(
@@ -1078,14 +1081,16 @@ fun ArnoldsRoomApp() {
                         isWatched = ::isWatched,
                         savedPos = ::savedPos,
                         onPick = { navTo(Screen.ShowDetail(it) },
-                        onRoom = { navTo(Screen.Room) }
+                        onRoom = { navTo(Screen.Room) },
+                        onBack = { navigateBack() }
                     )
                 }
             }
             is Screen.MovieFolders -> MovieFoldersScreen(
                 folders = detectMovieFolders(videos, ::catOf),
                 onPick = { navTo(Screen.FolderDetail(it) },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.FolderDetail -> {
                 val folder = detectMovieFolders(videos, ::catOf).firstOrNull { it.key == s.key }
@@ -1097,7 +1102,8 @@ fun ArnoldsRoomApp() {
                     isFav = ::isFav,
                     savedPos = ::savedPos,
                     onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies") },
-                    onRoom = { navTo(Screen.Room) }
+                    onRoom = { navTo(Screen.Room) },
+                    onBack = { navigateBack() }
                 )
             }
             is Screen.Library -> LibraryScreen(
@@ -1109,6 +1115,7 @@ fun ArnoldsRoomApp() {
                 savedPos = ::savedPos,
                 onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label) },
                 onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() },
                 onStats = { navTo(Screen.Stats) }
             )
             is Screen.Search -> SearchScreen(
@@ -1118,7 +1125,8 @@ fun ArnoldsRoomApp() {
                 isFav = ::isFav,
                 savedPos = ::savedPos,
                 onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, "Search") },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.Settings -> SettingsScreen(
                 videoCount = videos.size,
@@ -1129,7 +1137,8 @@ fun ArnoldsRoomApp() {
                     videos.forEach { ed.remove("pos_${it.id}") }
                     ed.apply()
                 },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.Stats -> StatsScreen(
                 videos = videos,
@@ -1137,13 +1146,15 @@ fun ArnoldsRoomApp() {
                 isWatched = ::isWatched,
                 savedPos = ::savedPos,
                 showsCount = detectShows(videos, ::catOf).size,
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.MusicLibrary -> MusicLibraryScreen(
                 prefs = prefs,
                 onPlaySong = { q, idx -> playSongs(q, idx) },
                 onOpenPlayer = { navTo(Screen.MusicPlayer) },
-                onRoom = { navTo(Screen.Room) }
+                onRoom = { navTo(Screen.Room) },
+                onBack = { navigateBack() }
             )
             is Screen.MusicPlayer -> MusicPlayerScreen(
                 prefs = prefs,
@@ -2266,8 +2277,27 @@ fun RoomBackdrop() {
     }
 }
 
+// The way home (May, 2026-11-10): now that the back button and
+// the header arrow step back one level at a time, every menu
+// carries a clear X in a white ring, labeled "Room" — one tap,
+// straight back to the main part of the app, however deep she is.
 @Composable
-fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, right: @Composable () -> Unit = {}) {
+fun RoomXButton(onRoom: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.size(34.dp).shadow(3.dp, CircleShape).clip(CircleShape)
+                .background(Color(0xCC10131A)).border(1.8.dp, Color.White, CircleShape)
+                .clickable { onRoom() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Close, "Back to the room", tint = Color.White, modifier = Modifier.size(19.dp))
+        }
+        Text("Room", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun ScreenHeader(title: String, onRoom: () -> Unit, onBack: () -> Unit, accent: Color = RoomYellow, right: @Composable () -> Unit = {}) {
     // Every list screen now opens with a slice of the room itself:
     // the painting as a banner (day/night by the same clock as the
     // room), an ink line and a colored line under it in the two-tone
@@ -2287,10 +2317,11 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, 
                 Modifier.fillMaxSize().padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onRoom) { Icon(Icons.Filled.ArrowBack, "Back to room", tint = Color.White) }
+                IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                 Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 right()
+                RoomXButton(onRoom)
             }
         }
         Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF10131A)))
@@ -2436,10 +2467,11 @@ fun CategoriesScreen(
     onPick: (Filter) -> Unit,
     onShows: () -> Unit,
     onMovieFolders: () -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("The Shelves — Categories", onRoom, accent = Color(0xFF7C4DFF))
+        ScreenHeader("The Shelves — Categories", onRoom, onBack, accent = Color(0xFF7C4DFF))
         LazyColumn(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(
@@ -2515,10 +2547,11 @@ fun ShowsScreen(
     isWatched: (VideoItem) -> Boolean,
     savedPos: (VideoItem) -> Long,
     onPick: (String) -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("TV Shows — Folders & Seasons", onRoom, accent = Color(0xFF7C4DFF))
+        ScreenHeader("TV Shows — Folders & Seasons", onRoom, onBack, accent = Color(0xFF7C4DFF))
         if (shows.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -2580,12 +2613,13 @@ fun ShowDetailScreen(
     savedPos: (VideoItem) -> Long,
     onToggleWatched: (VideoItem) -> Unit,
     onPlay: (List<VideoItem>, Int) -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     val next = nextEpisode(show, isWatched, savedPos)
     val nextSeason = next?.let { n -> show.seasons.toSortedMap().entries.firstOrNull { n in it.value } }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(show.title, onRoom)
+        ScreenHeader(show.title, onRoom, onBack)
         LazyColumn(Modifier.fillMaxSize()) {
             if (next != null && nextSeason != null) {
                 item {
@@ -2642,9 +2676,9 @@ fun ShowDetailScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onRoom: () -> Unit) {
+fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onRoom: () -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Movies — by Folder", onRoom, accent = Color(0xFFFFC107))
+        ScreenHeader("Movies — by Folder", onRoom, onBack, accent = Color(0xFFFFC107))
         if (folders.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -2693,6 +2727,7 @@ fun LibraryScreen(
     savedPos: (VideoItem) -> Long,
     onPlay: (List<VideoItem>, Int) -> Unit,
     onRoom: () -> Unit,
+    onBack: () -> Unit,
     onStats: (() -> Unit)? = null
 ) {
     var sort by remember { mutableStateOf(SortMode.NEWEST) }
@@ -2707,7 +2742,7 @@ fun LibraryScreen(
         }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(title, onRoom, accent = when (title) {
+        ScreenHeader(title, onRoom, onBack, accent = when (title) {
             Filter.MOVIES.label -> Color(0xFFFFC107)
             Filter.TV.label -> Color(0xFF7C4DFF)
             Filter.FAVORITES.label -> Color(0xFFF50057)
@@ -2795,7 +2830,8 @@ fun SearchScreen(
     isFav: (VideoItem) -> Boolean,
     savedPos: (VideoItem) -> Long,
     onPlay: (List<VideoItem>, Int) -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var version by remember { mutableStateOf(0) }
@@ -2804,7 +2840,7 @@ fun SearchScreen(
         if (query.isBlank()) items else items.filter { it.title.contains(query, ignoreCase = true) }
     }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Search", onRoom, accent = Color(0xFF2979FF))
+        ScreenHeader("Search", onRoom, onBack, accent = Color(0xFF2979FF))
         OutlinedTextField(
             value = query, onValueChange = { query = it },
             placeholder = { Text("Type a title…", color = RoomTextDim) },
@@ -2856,14 +2892,15 @@ fun StatsScreen(
     isWatched: (VideoItem) -> Boolean,
     savedPos: (VideoItem) -> Long,
     showsCount: Int,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     val finished = videos.count { isWatched(it) }
     val inProgress = videos.filter { savedPos(it) > 0L }
         .sortedByDescending { savedPos(it) }
     val timeMs = videos.sumOf { v -> if (isWatched(v)) v.durationMs else savedPos(v) }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Your watching", onRoom, accent = Color(0xFF00ACC1))
+        ScreenHeader("Your watching", onRoom, onBack, accent = Color(0xFF00ACC1))
         LazyColumn(
             Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2915,10 +2952,11 @@ fun SettingsScreen(
     granted: Boolean,
     onGrant: () -> Unit,
     onClearResume: () -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Settings", onRoom, accent = Color(0xFFFF5252))
+        ScreenHeader("Settings", onRoom, onBack, accent = Color(0xFFFF5252))
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Box(
@@ -4144,7 +4182,8 @@ fun MusicLibraryScreen(
     prefs: SharedPreferences,
     onPlaySong: (List<SongItem>, Int) -> Unit,
     onOpenPlayer: () -> Unit,
-    onRoom: () -> Unit
+    onRoom: () -> Unit,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     var audioGranted by remember {
@@ -4263,7 +4302,7 @@ fun MusicLibraryScreen(
                     albumPick = null
                     artistPick = null
                     playlistPick = null
-                } else onRoom()
+                } else onBack()
             }) {
                 Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
             }
@@ -4284,6 +4323,7 @@ fun MusicLibraryScreen(
                     color = Color(0xFFC9D4E3), fontSize = 12.sp
                 )
             }
+            RoomXButton(onRoom)
             }
         }
         if (!audioGranted) {
