@@ -2970,8 +2970,14 @@ fun RadioPlayerBox(
                 modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
                     detectDragGestures { change, drag ->
                         change.consume()
-                        offX = x + drag.x
-                        offY = y + drag.y
+                        // Read the CURRENT offsets at drag time (the
+                        // video pop-up's original glitch was capturing
+                        // the start position once, so every drag event
+                        // snapped the box back toward where it began).
+                        val curX = offX ?: (maxWPx - widthPx) / 2f
+                        val curY = offY ?: (maxHPx - heightPx - with(density) { 84.dp.toPx() })
+                        offX = (curX + drag.x).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+                        offY = (curY + drag.y).coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
                     }
                 }
             ) {
