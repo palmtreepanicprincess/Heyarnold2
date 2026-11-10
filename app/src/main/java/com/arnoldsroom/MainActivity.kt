@@ -94,6 +94,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -600,6 +601,26 @@ object RadioBoxState {
     val offY = mutableStateOf<Float?>(null)
     val widthDpF = mutableStateOf(230f)
 }
+// The music library remembers where she was (May, 2026-11-10):
+// opening the full player used to reset the library to its
+// first tab, because the screen left the composition and its
+// remember-state died with it. The place now lives here — tab,
+// open album/artist/playlist, search text, and every list's
+// scroll — for the session, same as the pop-ups' places.
+object MusicLibState {
+    var tab by mutableStateOf(0)
+    var query by mutableStateOf("")
+    var albumPick by mutableStateOf<String?>(null)
+    var artistPick by mutableStateOf<String?>(null)
+    var playlistPick by mutableStateOf<String?>(null)
+    val songsList = LazyListState()
+    val albumsList = LazyListState()
+    val artistsList = LazyListState()
+    val playlistsList = LazyListState()
+    val artistAlbumsList = LazyListState()
+    val detailList = LazyListState()
+}
+
 object MiniTvState {
     val offX = mutableStateOf<Float?>(null)
     val offY = mutableStateOf<Float?>(null)
@@ -4704,11 +4725,11 @@ fun MusicLibraryScreen(
         )
     }
     var songs by remember { mutableStateOf<List<SongItem>>(emptyList()) }
-    var query by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf(0) } // 0 Songs, 1 Albums, 2 Artists, 3 Favorites, 4 Playlists
-    var albumPick by remember { mutableStateOf<String?>(null) }
-    var artistPick by remember { mutableStateOf<String?>(null) }
-    var playlistPick by remember { mutableStateOf<String?>(null) }
+    var query by MusicLibState.query
+    var tab by MusicLibState.tab // 0 Songs, 1 Albums, 2 Artists, 3 Favorites, 4 Playlists
+    var albumPick by MusicLibState.albumPick
+    var artistPick by MusicLibState.artistPick
+    var playlistPick by MusicLibState.playlistPick
     var favTick by remember { mutableStateOf(0) }
     var addToSong by remember { mutableStateOf<SongItem?>(null) }
     var showNewPlaylist by remember { mutableStateOf(false) }
@@ -4933,7 +4954,7 @@ fun MusicLibraryScreen(
                 Text("${artistAlbums.size} albums \u2022 ${artistSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
             }
             Spacer(Modifier.height(6.dp))
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.artistAlbumsList) {
                 items(artistAlbums, key = { it.key }) { (name, list) ->
                     Row(
                         Modifier.fillMaxWidth().clickable { albumPick = name }
@@ -5012,7 +5033,7 @@ fun MusicLibraryScreen(
                     color = RoomTextDim, fontSize = 14.sp
                 )
             }
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.detailList) {
                 items(detailSongs, key = { it.id }) { s ->
                     SongRow(
                         s = s, prefs = prefs,
@@ -5075,7 +5096,7 @@ fun MusicLibraryScreen(
         when (tab) {
             0, 3 -> {
                 val shown = songs.filter { s -> (tab == 0 || isFav(s)) && matches(s) }
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.songsList) {
                     items(shown, key = { it.id }) { s ->
                         SongRow(
                             s = s, prefs = prefs,
@@ -5096,7 +5117,7 @@ fun MusicLibraryScreen(
                 val shownAlbums = albums.filter { (name, list) ->
                     query.isBlank() || name.contains(query, true) || list.any { matches(it) }
                 }
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.albumsList) {
                     items(shownAlbums, key = { it.key }) { (name, list) ->
                         Row(
                             Modifier.fillMaxWidth().clickable { albumPick = name }
@@ -5132,7 +5153,7 @@ fun MusicLibraryScreen(
                 val shownArtists = artists.filter { (name, _) ->
                     query.isBlank() || name.contains(query, true)
                 }
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.artistsList) {
                     items(shownArtists, key = { it.key }) { (name, list) ->
                         Row(
                             Modifier.fillMaxWidth().clickable { artistPick = name }
@@ -5181,7 +5202,7 @@ fun MusicLibraryScreen(
                             color = RoomTextDim, fontSize = 14.sp
                         )
                     }
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.playlistsList) {
                         items(names, key = { it }) { name ->
                             Row(
                                 Modifier.fillMaxWidth().clickable { playlistPick = name }
