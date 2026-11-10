@@ -825,12 +825,12 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
         Text(
             spot.label,
             color = Color(0xFF10131A),
-            fontSize = if (compact) 13.sp else 15.5.sp,
+            fontSize = if (compact) 13.sp else 14.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clip(RoundedCornerShape(5.dp))
                 .background(spot.color.copy(alpha = 0.95f))
-                .padding(horizontal = 6.dp, vertical = 1.dp)
+                .padding(horizontal = if (compact) 6.dp else 5.dp, vertical = if (compact) 1.dp else 0.dp)
         )
     }
 }
@@ -1090,12 +1090,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (musicOn) "Music" else "Muted",
                 color = Color.White,
-                fontSize = 12.5.sp,
+                fontSize = if (tallMode) 12.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(Color(0xAA10131A))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
         Column(
@@ -1135,12 +1135,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Text(
                 if (night) "Day" else "Night",
                 color = Color.White,
-                fontSize = 12.5.sp,
+                fontSize = if (tallMode) 12.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(Color(0xAA10131A))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
     }
@@ -2163,12 +2163,7 @@ fun MiniPlayerBox(
                         onClick = { if (exo.isPlaying) exo.pause() else exo.play() }
                     )
                 )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    current?.title ?: "", color = Color.White, fontSize = 11.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.Fullscreen, "Full screen", tint = Color.White,
                     modifier = Modifier.size(18.dp).combinedClickable(
