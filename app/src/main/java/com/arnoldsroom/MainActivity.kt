@@ -1193,7 +1193,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     // The Plaza ring's pink reads hotter than the other colors at the
     // same alpha — its glow is dimmed a touch so all the rings pulse
     // at the same felt strength (May, 2026-11-10).
-    val glowAlpha = (0.15f + 0.23f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
+    val glowAlpha = (0.16f + 0.28f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
