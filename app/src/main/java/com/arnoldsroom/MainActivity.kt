@@ -567,7 +567,7 @@ const val PIP_TOGGLE_ACTION = "com.arnoldsroom.PIP_TOGGLE"
 object RadioBoxState {
     val offX = mutableStateOf<Float?>(null)
     val offY = mutableStateOf<Float?>(null)
-    val widthDpF = mutableStateOf(292f)
+    val widthDpF = mutableStateOf(230f)
 }
 object MiniTvState {
     val offX = mutableStateOf<Float?>(null)
@@ -577,7 +577,7 @@ object MiniTvState {
 object MusicBoxState {
     val offX = mutableStateOf(0f)
     val offY = mutableStateOf(0f)
-    val widthDpF = mutableStateOf(288f)
+    val widthDpF = mutableStateOf(175f)
 }
 
 // One builder for every PiP params need: the video's real aspect,
