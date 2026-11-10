@@ -3403,6 +3403,10 @@ fun MiniPlayerBox(
 
 private val MusicLime = Color(0xFF76FF03)
 
+// The music pop-up wears soft violet instead (May, 2026-11-10):
+// the neon lime was too much floating over the room.
+private val MusicPopPurple = Color(0xFFB388FF)
+
 @Composable
 private fun SongRow(
     s: SongItem,
@@ -3948,8 +3952,8 @@ fun MusicMiniBox(
                 .width(274.dp)
                 .shadow(10.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF141A12))
-                .border(2.dp, MusicLime.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
+                .background(Color(0xFF1D1430))
+                .border(2.dp, MusicPopPurple.copy(alpha = 0.75f), RoundedCornerShape(16.dp))
                 .padding(12.dp)
         ) {
             Row(
@@ -3962,9 +3966,9 @@ fun MusicMiniBox(
                 },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicLime, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.MusicNote, null, tint = MusicPopPurple, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("MUSIC", color = MusicLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("MUSIC", color = MusicPopPurple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 Icon(
                     Icons.Filled.Close, "Hide pop-up player", tint = RoomTextDim,
@@ -3982,7 +3986,7 @@ fun MusicMiniBox(
             val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
             LinearProgressIndicator(
                 progress = if (dur > 0) (MusicState.positionMs.toFloat() / dur).coerceIn(0f, 1f) else 0f,
-                color = MusicLime,
+                color = MusicPopPurple,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(6.dp))
@@ -3991,7 +3995,7 @@ fun MusicMiniBox(
                     Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White)
                 }
                 Box(
-                    Modifier.size(42.dp).clip(CircleShape).background(MusicLime)
+                    Modifier.size(42.dp).clip(CircleShape).background(MusicPopPurple)
                         .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
                     contentAlignment = Alignment.Center
                 ) {
