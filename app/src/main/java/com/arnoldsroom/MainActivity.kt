@@ -3,6 +3,11 @@ package com.arnoldsroom
 import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.graphics.drawable.Icon
 import android.content.res.Configuration
 import android.util.Rational
 import android.app.PendingIntent
@@ -68,6 +73,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -546,9 +552,41 @@ object PipControl {
     // the floating window (and the in-app pop-up TV) take it on, so
     // 4:3 shows get a 4:3 window instead of a 16:9 frame.
     var aspect by mutableStateOf(16f / 9f)
+    // The floating window's own play/pause button needs to know the
+    // state and reach the player: the full player keeps these fresh.
+    var playing by mutableStateOf(false)
+    var togglePlay: (() -> Unit)? = null
+}
+
+const val PIP_TOGGLE_ACTION = "com.arnoldsroom.PIP_TOGGLE"
+
+// One builder for every PiP params need: the video's real aspect,
+// and (the fix for May's 2026-11-10 report) a real play/pause
+// ACTION on the window — without one, the floating player showed
+// no pause button at all.
+fun buildPipParams(context: Context, autoEnter: Boolean): PictureInPictureParams {
+    val a = PipControl.aspect.coerceIn(0.42f, 2.39f)
+    val b = PictureInPictureParams.Builder()
+        .setAspectRatio(Rational((a * 1000).toInt(), 1000))
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) b.setAutoEnterEnabled(autoEnter)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        try {
+            val intent = Intent(PIP_TOGGLE_ACTION).setPackage(context.packageName)
+            val pi = PendingIntent.getBroadcast(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val iconRes = if (PipControl.playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            val label = if (PipControl.playing) "Pause" else "Play"
+            b.setActions(listOf(RemoteAction(Icon.createWithResource(context, iconRes), label, label, pi)))
+        } catch (e: Exception) { }
+    }
+    return b.build()
 }
 
 class MainActivity : ComponentActivity() {
+    private var pipReceiver: BroadcastReceiver? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Edge-to-edge: the app draws behind the system bars instead of
@@ -558,19 +596,36 @@ class MainActivity : ComponentActivity() {
         // that no amount of in-app zoom could fill, because the app
         // never got that strip of screen in the first place.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // The floating window's play/pause button broadcasts here.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, i: Intent?) {
+                    PipControl.togglePlay?.invoke()
+                    try { setPictureInPictureParams(buildPipParams(this@MainActivity, true)) } catch (e: Exception) { }
+                }
+            }
+            pipReceiver = receiver
+            val filter = IntentFilter(PIP_TOGGLE_ACTION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(receiver, filter)
+            }
+        }
         setContent { ArnoldsRoomApp() }
+    }
+
+    override fun onDestroy() {
+        pipReceiver?.let { try { unregisterReceiver(it) } catch (e: Exception) { } }
+        pipReceiver = null
+        super.onDestroy()
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && PipControl.shouldEnter) {
             try {
-                val a = PipControl.aspect.coerceIn(0.42f, 2.39f)
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder()
-                        .setAspectRatio(Rational((a * 1000).toInt(), 1000))
-                        .build()
-                )
+                enterPictureInPictureMode(buildPipParams(this, true))
             } catch (e: Exception) {
                 // Some devices refuse PiP; playback simply stays in the app.
             }
@@ -1079,7 +1134,7 @@ fun ArnoldsRoomApp() {
                 onClose = { showRadio = false }
             )
         }
-        if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini) {
+        if (MusicState.hasMedia && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
             MusicMiniBox(
                 onExpand = { screen = Screen.MusicPlayer },
                 onClose = { showMusicMini = false }
@@ -2954,14 +3009,14 @@ fun PlayerScreen(
     val pipAspect = PipControl.aspect
     LaunchedEffect(isPlaying, pipAspect) {
         PipControl.shouldEnter = isPlaying
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            activity?.setPictureInPictureParams(
-                PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational((pipAspect.coerceIn(0.42f, 2.39f) * 1000).toInt(), 1000))
-                    .setAutoEnterEnabled(isPlaying)
-                    .build()
-            )
+        PipControl.playing = isPlaying
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            activity?.setPictureInPictureParams(buildPipParams(context, isPlaying))
         }
+    }
+    DisposableEffect(exo) {
+        PipControl.togglePlay = { if (exo.isPlaying) exo.pause() else exo.play() }
+        onDispose { PipControl.togglePlay = null }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -3299,7 +3354,13 @@ fun PlayerScreen(
         }
     }
 
-    if (fullscreen) {
+    if (PipControl.inPip) {
+        // In the floating window outside the app, ONLY the video
+        // shows (May, 2026-11-10): the full player layout used to
+        // come along — no pause button, and a slice of the
+        // what's-next list bleeding into the window's bottom.
+        playerBox(Modifier.fillMaxSize())
+    } else if (fullscreen) {
         playerBox(Modifier.fillMaxSize())
     } else {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -3375,9 +3436,10 @@ fun RadioPlayerBox(
         val density = LocalDensity.current
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
-        val widthDp = 292.dp
+        var widthDpF by remember { mutableStateOf(292f) }
+        val widthDp = widthDpF.dp
         val widthPx = with(density) { widthDp.toPx() }
-        val heightPx = with(density) { 268.dp.toPx() }
+        val heightPx = widthPx * (268f / 292f)
         var offX by remember { mutableStateOf<Float?>(null) }
         var offY by remember { mutableStateOf<Float?>(null) }
         val x = (offX ?: (maxWPx - widthPx) / 2f).coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
@@ -3412,6 +3474,12 @@ fun RadioPlayerBox(
                     .background(Color(0xFF2A1245))
                     .border(3.5.dp, Color(0xFF10131A), RoundedCornerShape(18.dp))
                     .padding(12.dp)
+                    // Pinch to resize (May, 2026-11-10).
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoom, _ ->
+                            if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(215f, 480f)
+                        }
+                    }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -4704,6 +4772,7 @@ fun MusicMiniBox(
     val song = MusicState.current ?: return
     var offX by remember { mutableStateOf(0f) }
     var offY by remember { mutableStateOf(0f) }
+    var widthDpF by remember { mutableStateOf(288f) }
     // The reels turn while the song plays and stop with it
     // (May, 2026-11-10: the music pop-up is a cassette player).
     var spin by remember { mutableStateOf(0f) }
@@ -4717,12 +4786,18 @@ fun MusicMiniBox(
         Column(
             Modifier.align(Alignment.BottomEnd).padding(14.dp)
                 .offset { IntOffset(offX.toInt(), offY.toInt()) }
-                .width(288.dp)
+                .width(widthDpF.dp)
                 .shadow(10.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF1D1430))
                 .border(2.5.dp, Color(0xFF10131A), RoundedCornerShape(16.dp))
                 .padding(12.dp)
+                // Pinch to resize (May, 2026-11-10).
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (zoom != 1f) widthDpF = (widthDpF * zoom).coerceIn(215f, 480f)
+                    }
+                }
         ) {
             Row(
                 Modifier.fillMaxWidth().pointerInput(Unit) {
