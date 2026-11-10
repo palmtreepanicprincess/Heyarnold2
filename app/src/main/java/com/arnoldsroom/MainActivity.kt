@@ -20,6 +20,9 @@ import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -805,6 +808,38 @@ fun ArnoldsRoomApp() {
         }
         if (!doorGone) {
             DoorIntro(onDone = { doorGone = true })
+            // The music button stays on top of the doors, so she can hush
+            // the song before she even steps into the room.
+            Column(
+                Modifier.align(Alignment.TopStart).padding(12.dp)
+                    .clickable { musicOn = !musicOn },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(46.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                        .background(Color(0xCC10131A))
+                        .border(2.5.dp, RoomYellow, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (musicOn) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
+                        if (musicOn) "Pause music" else "Play music",
+                        tint = if (musicOn) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (musicOn) "Music" else "Muted",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xAA10131A))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
         }
     }
     }
@@ -1034,27 +1069,104 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, compact: Boolean, onTap
 }
 
 // Opening moment: a pair of doors opens into the room each time the app starts.
+// A short wooden knock, synthesized in code (no sound file needed): a low
+// thump plus a woody click that both die away in about a tenth of a second.
+fun buildKnockTrack(): AudioTrack {
+    val sampleRate = 44100
+    val frames = (sampleRate * 0.11).toInt()
+    val pcm = ShortArray(frames)
+    val rnd = kotlin.random.Random(7)
+    for (i in 0 until frames) {
+        val t = i / sampleRate.toDouble()
+        val thump = kotlin.math.sin(2.0 * Math.PI * 155.0 * t) * kotlin.math.exp(-t * 48.0)
+        val click = (rnd.nextDouble() * 2.0 - 1.0) * kotlin.math.exp(-t * 160.0)
+        val v = (thump * 0.75 + click * 0.30).coerceIn(-1.0, 1.0)
+        pcm[i] = (v * Short.MAX_VALUE).toInt().toShort()
+    }
+    val track = AudioTrack.Builder()
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        )
+        .setAudioFormat(
+            AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build()
+        )
+        .setBufferSizeInBytes(pcm.size * 2)
+        .setTransferMode(AudioTrack.MODE_STATIC)
+        .build()
+    track.write(pcm, 0, pcm.size)
+    return track
+}
+
 @Composable
 fun DoorIntro(onDone: () -> Unit) {
     val slide = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(300)
-        slide.animateTo(1f, tween(950, easing = FastOutSlowInEasing))
-        onDone()
+    val nudge = remember { Animatable(0f) }
+    var knocks by remember { mutableStateOf(0) }
+    var opening by remember { mutableStateOf(false) }
+    val knockTrack = remember { buildKnockTrack() }
+    DisposableEffect(Unit) { onDispose { knockTrack.release() } }
+    fun knock() {
+        try {
+            if (knockTrack.playState == AudioTrack.PLAYSTATE_PLAYING) knockTrack.stop()
+            knockTrack.reloadStaticData()
+            knockTrack.play()
+        } catch (e: Exception) {
+            // No knock sound on this device; the doors still work.
+        }
     }
-    Row(
-        Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { onDone() }) }
+    LaunchedEffect(knocks) {
+        if (knocks == 1) {
+            nudge.animateTo(7f, tween(70))
+            nudge.animateTo(-4f, tween(70))
+            nudge.animateTo(0f, tween(80))
+        }
+    }
+    LaunchedEffect(opening) {
+        if (opening) {
+            slide.animateTo(1f, tween(950, easing = FastOutSlowInEasing))
+            onDone()
+        }
+    }
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures(onTap = {
+                if (!opening) {
+                    knock()
+                    knocks++
+                    if (knocks >= 2) opening = true
+                }
+            })
+        }
     ) {
-        DoorPanel(knobOnRight = true, toLeft = true, progress = slide.value)
-        DoorPanel(knobOnRight = false, toLeft = false, progress = slide.value)
+        Row(Modifier.fillMaxSize()) {
+            DoorPanel(knobOnRight = true, toLeft = true, progress = slide.value, nudgePx = nudge.value)
+            DoorPanel(knobOnRight = false, toLeft = false, progress = slide.value, nudgePx = nudge.value)
+        }
+        Text(
+            "knock twice to come in",
+            fontFamily = HandwrittenFont,
+            color = Color(0xFFFFF3E0).copy(alpha = 0.85f),
+            fontSize = 17.sp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp)
+        )
     }
 }
 
 @Composable
-fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float) {
+fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, nudgePx: Float = 0f) {
     Box(
         Modifier.fillMaxHeight().weight(1f)
-            .graphicsLayer { translationX = (if (toLeft) -1f else 1f) * progress * this.size.width }
+            .graphicsLayer {
+                translationX = (if (toLeft) -1f else 1f) * progress * this.size.width +
+                    (if (toLeft) nudgePx else -nudgePx)
+            }
             .background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
                     listOf(Color(0xFF4A6FA5), Color(0xFF2F4E79))
