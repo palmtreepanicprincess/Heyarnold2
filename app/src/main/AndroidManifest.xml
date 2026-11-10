@@ -30,7 +30,7 @@
             android:foregroundServiceType="mediaPlayback" />
         <receiver
             android:name=".ContinueWidget"
-            android:exported="false"
+            android:exported="true"
             android:label="Continue watching">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
