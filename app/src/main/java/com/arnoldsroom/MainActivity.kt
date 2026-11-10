@@ -91,6 +91,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Add
@@ -590,6 +591,7 @@ class MainActivity : ComponentActivity() {
 // night mode no matter what the room was showing).
 object RoomNightState {
     var night by mutableStateOf(false)
+    var phase by mutableStateOf(DayPhase.DAY)
 }
 
 // ---------- App root ----------
@@ -598,9 +600,13 @@ fun ArnoldsRoomApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
-    var nightOverride by remember { mutableStateOf<Boolean?>(null) }
-    val night = nightOverride ?: isNightNow()
-    LaunchedEffect(night) { RoomNightState.night = night }
+    var phaseOverride by remember { mutableStateOf<DayPhase?>(null) }
+    val phase = phaseOverride ?: phaseForClock()
+    val night = phase == DayPhase.NIGHT
+    LaunchedEffect(phase) {
+        RoomNightState.phase = phase
+        RoomNightState.night = night
+    }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var granted by remember {
         mutableStateOf(
@@ -897,8 +903,15 @@ fun ArnoldsRoomApp() {
         ) { s ->
             when (s) {
             is Screen.Room -> RoomScreen(
-                night = night,
-                onToggleNight = { nightOverride = !night },
+                phase = phase,
+                onCyclePhase = {
+                    phaseOverride = when (phase) {
+                        DayPhase.DAWN -> DayPhase.DAY
+                        DayPhase.DAY -> DayPhase.DUSK
+                        DayPhase.DUSK -> DayPhase.NIGHT
+                        DayPhase.NIGHT -> DayPhase.DAWN
+                    }
+                },
                 musicOn = musicOn,
                 onToggleMusic = { musicOn = !musicOn },
                 onOpenRadio = { showRadio = true },
@@ -1152,28 +1165,65 @@ fun findDrawableId(context: Context, exact: String): Int {
     } catch (e: Exception) { 0 }
 }
 
-fun isNightNow(): Boolean {
+// The room's four times of day (May, 2026-11-10): dawn and dusk
+// join day and night, each with its own paintings on both screens.
+// Left alone, the room follows the real clock; the corner button
+// steps through all four by hand for the session.
+enum class DayPhase { DAWN, DAY, DUSK, NIGHT }
+
+fun phaseForClock(): DayPhase {
     val h = java.time.LocalTime.now().hour
-    return h >= 19 || h < 7
+    return when {
+        h in 5..6 -> DayPhase.DAWN
+        h in 7..18 -> DayPhase.DAY
+        h in 19..20 -> DayPhase.DUSK
+        else -> DayPhase.NIGHT
+    }
+}
+
+fun isNightNow(): Boolean = phaseForClock() == DayPhase.NIGHT
+
+// A safety net for the dawn/dusk art: if the uploaded file's name
+// holds the word (whatever else the phone wrapped around it), find
+// the drawable whose name carries it for this screen shape.
+fun findPhaseDrawableId(context: Context, keyword: String, tall: Boolean): Int {
+    return try {
+        val cls = Class.forName(context.packageName + ".R\$drawable")
+        cls.fields.firstOrNull { f ->
+            val n = f.name.lowercase()
+            n.contains(keyword) && (if (tall) n.contains("tall") else !n.contains("tall"))
+        }?.getInt(null) ?: 0
+    } catch (e: Exception) { 0 }
 }
 
 @Composable
-fun rememberRoomBitmap(tall: Boolean, night: Boolean): Bitmap? {
+fun rememberRoomBitmap(tall: Boolean, phase: DayPhase): Bitmap? {
     val context = LocalContext.current
-    return remember(tall, night) {
+    return remember(tall, phase) {
         try {
-            val names = when {
-                tall && night -> listOf("arnolds_room_tall_night", "file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
-                tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
-                night -> listOf("arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
-                else -> listOf("file_00000000ed6081f586fc3d5ad2e02ce3", "arnolds_room_wide", "arnolds_room")
-            }
             var bmp: Bitmap? = null
-            for (n in names) {
-                val id = findDrawableId(context, n)
-                if (id != 0) {
-                    bmp = android.graphics.BitmapFactory.decodeResource(context.resources, id)
-                    if (bmp != null) break
+            // Dawn and dusk get first try at their own paintings.
+            if (phase == DayPhase.DAWN || phase == DayPhase.DUSK) {
+                val kw = if (phase == DayPhase.DAWN) "dawn" else "dusk"
+                val pid = findDrawableId(context, if (tall) "arnolds_room_tall_$kw" else "arnolds_room_wide_$kw")
+                    .takeIf { it != 0 } ?: findPhaseDrawableId(context, kw, tall)
+                if (pid != 0) bmp = android.graphics.BitmapFactory.decodeResource(context.resources, pid)
+            }
+            if (bmp == null) {
+                // Until the dawn/dusk art is in the app, dawn borrows
+                // the day and dusk borrows the night.
+                val names = when {
+                    tall && (phase == DayPhase.NIGHT || phase == DayPhase.DUSK) -> listOf("arnolds_room_tall_night", "file_00000000f44881f585d18819f3427bf8", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
+                    tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
+                    phase == DayPhase.NIGHT || phase == DayPhase.DUSK -> listOf("arnolds_room_night", "file_00000000395c81f5987ceacf0dab6e59", "arnolds_room")
+                    else -> listOf("file_00000000ed6081f586fc3d5ad2e02ce3", "arnolds_room_wide", "arnolds_room")
+                }
+                for (n in names) {
+                    val id = findDrawableId(context, n)
+                    if (id != 0) {
+                        bmp = android.graphics.BitmapFactory.decodeResource(context.resources, id)
+                        if (bmp != null) break
+                    }
                 }
             }
             bmp
@@ -1652,7 +1702,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.47f, 0.350f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
@@ -1781,7 +1831,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         // One spot set per screen shape: the day and night paintings share the
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
-        val roomBitmap = rememberRoomBitmap(tallMode, night)
+        val roomBitmap = rememberRoomBitmap(tallMode, phase)
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
             ?: if (tallMode) 783f / 2007f else 1704f / 2048f
         var fitW = maxWDp
@@ -1830,7 +1880,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     transformOrigin = zoomOrigin
                 }
         ) {
-            Crossfade(targetState = roomBitmap, animationSpec = tween(450), label = "roomArt") { bmp ->
+            Crossfade(targetState = roomBitmap, animationSpec = tween(850), label = "roomArt") { bmp ->
                 if (bmp != null) {
                     Image(
                         bitmap = bmp.asImageBitmap(),
@@ -1848,7 +1898,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     )
                 }
             }
-            if (fxOn) SkyEffects(night = night, tall = tallMode, t = skyT)
+            if (fxOn && (phase == DayPhase.DAY || phase == DayPhase.NIGHT)) SkyEffects(night = phase == DayPhase.NIGHT, tall = tallMode, t = skyT)
             activeSpots.forEachIndexed { i, spot ->
                 Box(
                     Modifier.offset(
@@ -2027,7 +2077,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 .align(Alignment.TopEnd)
                 .padding(12.dp)
                 .alpha(if (doorsOpen) 1f else 0f)
-                .combinedClickable(onClick = onToggleNight),
+                .combinedClickable(onClick = onCyclePhase),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -2048,17 +2098,27 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     )
                     Box(Modifier.fillMaxSize().background(Color(0x59000000)))
                 }
-                Crossfade(targetState = night, animationSpec = tween(300), label = "dayNightIcon") { n ->
+                Crossfade(targetState = phase, animationSpec = tween(300), label = "dayNightIcon") { ph ->
                     Icon(
-                        if (n) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                        if (n) "Day" else "Night",
+                        when (ph) {
+                            DayPhase.DAWN -> Icons.Filled.WbTwilight
+                            DayPhase.DAY -> Icons.Filled.LightMode
+                            DayPhase.DUSK -> Icons.Filled.WbTwilight
+                            DayPhase.NIGHT -> Icons.Filled.DarkMode
+                        },
+                        "Time of day",
                         tint = RoomYellow, modifier = Modifier.size(18.dp)
                     )
                 }
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                if (night) "Day" else "Night",
+                when (phase) {
+                    DayPhase.DAWN -> "Dawn"
+                    DayPhase.DAY -> "Day"
+                    DayPhase.DUSK -> "Dusk"
+                    DayPhase.NIGHT -> "Night"
+                },
                 color = Color.White,
                 fontSize = if (tallMode) 12.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -2079,8 +2139,7 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, accent: Color = RoomYellow, 
     // room), an ink line and a colored line under it in the two-tone
     // style of the room's rings — so leaving the room doesn't leave
     // its world behind (the cohesion pass, 2026-11-10).
-    val night = RoomNightState.night
-    val bmp = rememberRoomBitmap(false, night)
+    val bmp = rememberRoomBitmap(false, RoomNightState.phase)
     Column(Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(62.dp)) {
             if (bmp != null) {
@@ -2759,7 +2818,7 @@ fun SettingsScreen(
                     "• Joystick on the rug — your music: songs, albums, artists, favorites, and playlists you make yourself\n" +
                     "• Door — settings (you're here)\n\n" +
                     "How the sound works: the room song is the app's ambience, and underneath it you can hear the street outside the window — traffic rolling by, a distant horn now and then. The music button in the room hushes the song and the city together. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
-                    "Every list wears a strip of the room's painting at the top, in the same day or night as the room. Flip day and night any time with the sun-and-moon button in the room, and the star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
+                    "Every list wears a strip of the room's painting at the top, in the same day or night as the room. The button in the room's top corner steps through dawn, day, dusk, and night — tap it to live in whichever light you like; left alone, the room follows the real clock. The star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
                     "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
                 )
@@ -4032,8 +4091,7 @@ fun MusicLibraryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(RoomDark).padding(16.dp)) {
-        val nightM = RoomNightState.night
-        val bannerM = rememberRoomBitmap(false, nightM)
+        val bannerM = rememberRoomBitmap(false, RoomNightState.phase)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                 .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
