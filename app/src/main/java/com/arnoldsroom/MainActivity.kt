@@ -1518,35 +1518,32 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.47f, 0.36f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.635f, 0.395f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.635f, 0.395f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.55f, 0.53f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.66f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.685f, 0.685f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.915f, 0.47f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.135f, 0.345f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.31f, 0.78f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     // Hotspots measured on the new wide daytime painting (the long room view).
     val wideDaySpots = listOf(
         Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.40f, 0.395f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.650f, 0.400f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.650f, 0.400f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.130f, 0.260f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.360f, 0.392f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.678f, 0.412f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.678f, 0.412f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.925f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.120f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
