@@ -187,10 +187,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -497,7 +500,8 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
         MediaStore.Audio.Media.TITLE,
         MediaStore.Audio.Media.ARTIST,
         MediaStore.Audio.Media.ALBUM,
-        MediaStore.Audio.Media.DURATION
+        MediaStore.Audio.Media.DURATION,
+        MediaStore.Audio.Media.TRACK
     )
     resolver.query(
         collection, projection,
@@ -509,6 +513,7 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
         val aI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
         val alI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
         val dI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+        val trI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
         while (c.moveToNext()) {
             val id = c.getLong(idI)
             val title = c.getString(tI)?.takeIf { it.isNotBlank() } ?: "Unknown title"
@@ -521,12 +526,29 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
                     artist = artist,
                     album = album,
                     durationMs = c.getLong(dI),
+                    track = c.getInt(trI),
                     uri = Uri.withAppendedPath(collection, id.toString()).toString()
                 )
             )
         }
     }
     return out
+}
+
+// Track numbers (May, 2026-11-10): MediaStore packs the disc into
+// the thousands — 1003 is disc 1 track 3, 2011 is disc 2 track 11 —
+// while plenty of files carry a plain 3 or 11, and untagged files 0.
+fun trackDisc(track: Int): Int = if (track >= 1000) track / 1000 else 1
+fun trackNum(track: Int): Int = if (track >= 1000) track % 1000 else track
+fun byTrackOrder(): Comparator<SongItem> = compareBy(
+    { trackDisc(it.track) },
+    { if (it.track > 0) trackNum(it.track) else Int.MAX_VALUE },
+    { it.title.lowercase() }
+)
+fun trackLabel(track: Int, multiDisc: Boolean): String? = when {
+    track <= 0 -> null
+    multiDisc -> "${trackDisc(track)}-${trackNum(track)}"
+    else -> trackNum(track).toString()
 }
 
 fun audioPermission(): String =
@@ -780,6 +802,30 @@ fun ArnoldsRoomApp() {
     // Sky effects master switch (May, 2026-11-10): one button beside
     // the music button turns the stars AND the lens flare off/on.
     var fxOn by remember { mutableStateOf(true) }
+
+    // Idle dim mode (May, 2026-11-10): two untouched minutes on
+    // the room and every icon melts away — just the painting,
+    // dimmed, plus any pop-up players still floating. The room
+    // also holds the screen awake (below), so the display never
+    // times out into black; it settles into the dim instead. One
+    // tap anywhere wakes it all back up.
+    var lastTouchMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var idleDim by remember { mutableStateOf(false) }
+    LaunchedEffect(screen, doorGone) {
+        if (screen is Screen.Room && doorGone) {
+            while (true) {
+                if (!idleDim && System.currentTimeMillis() - lastTouchMs >= 120_000L) idleDim = true
+                delay(1000)
+            }
+        }
+    }
+    LaunchedEffect(screen) { if (screen !is Screen.Room) idleDim = false }
+    // On the room, the screen never sleeps — it dims instead.
+    val appView = LocalView.current
+    DisposableEffect(screen is Screen.Room) {
+        appView.keepScreenOn = screen is Screen.Room
+        onDispose { appView.keepScreenOn = false }
+    }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -1046,7 +1092,27 @@ fun ArnoldsRoomApp() {
 
     val libTick = libVersion
     MaterialTheme(typography = cartoonTypography()) {
-    Box(Modifier.fillMaxSize().background(RoomDark)) {
+    Box(
+        Modifier.fillMaxSize().background(RoomDark)
+            .pointerInput(Unit) {
+                // A silent witness to every touch (May, 2026-11-10):
+                // it never eats a tap — except the one that wakes
+                // the room from its idle dim, which it swallows so
+                // waking up doesn't also press whatever it lands on.
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        if (ev.type == PointerEventType.Press) {
+                            lastTouchMs = System.currentTimeMillis()
+                            if (idleDim) {
+                                idleDim = false
+                                ev.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
         if (screen !is Screen.Room && screen !is Screen.Player && screen !is Screen.MusicPlayer) {
             RoomBackdrop()
         }
@@ -1075,6 +1141,7 @@ fun ArnoldsRoomApp() {
                 fxOn = fxOn,
                 onToggleFx = { fxOn = !fxOn },
                 doorsOpen = doorGone,
+                dimmed = idleDim,
                 onHotspot = { dest -> go(dest, needsVideos = dest !is Screen.MusicLibrary) },
                 onShuffle = {
                     pauseMusic()
@@ -1770,7 +1837,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean, dimmed: Boolean = false) {
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.47f, 0.350f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
@@ -1970,7 +2037,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                 }
             }
             if (fxOn && (phase == DayPhase.DAY || phase == DayPhase.NIGHT)) SkyEffects(night = phase == DayPhase.NIGHT, tall = tallMode, t = skyT)
-            activeSpots.forEachIndexed { i, spot ->
+            if (!dimmed) activeSpots.forEachIndexed { i, spot ->
                 Box(
                     Modifier.offset(
                         x = drawnW * spot.fx - if (tallMode) 26.dp else 34.dp,
@@ -1990,8 +2057,18 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                 }
             }
         }
+        // Idle dim (May, 2026-11-10): a soft black veil fades in
+        // over the whole room; the pop-up players are composed
+        // outside this screen, so they stay lit on top of it.
+        val dimAlpha by animateFloatAsState(
+            targetValue = if (dimmed) 0.62f else 0f,
+            animationSpec = tween(700), label = "idleDim"
+        )
+        if (dimAlpha > 0.01f) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dimAlpha)))
+        }
         AnimatedVisibility(
-            visible = hintVisible,
+            visible = hintVisible && !dimmed,
             exit = fadeOut(tween(500)),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomTextPad + 2.dp)
         ) {
@@ -2006,6 +2083,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
+        if (!dimmed) {
         Row(
             Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = bottomTextPad),
             verticalAlignment = Alignment.Bottom
@@ -2038,6 +2116,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                 )
             }
         }
+        }
+        if (!dimmed) {
         Text(
             "Series created by Craig Bartlett\nApp created by May Marquardt",
             fontFamily = HandwrittenFont,
@@ -2046,6 +2126,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
             textAlign = TextAlign.End,
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = bottomTextPad)
         )
+        }
+        if (!dimmed) {
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -2093,6 +2175,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
+        }
+        if (!dimmed) {
         // Effects toggle (May, 2026-11-10): sits right beside the music
         // button; one tap stills the sky — stars and lens flare both
         // gone — and a second tap brings them back.
@@ -2143,6 +2227,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
         }
+        }
+        if (!dimmed) {
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -2198,6 +2284,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                     .background(Color(0x8810131A))
                     .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
             )
+        }
         }
     }
 }
@@ -4202,7 +4289,8 @@ private fun SongRow(
     onPlay: () -> Unit,
     onToggleFav: () -> Unit,
     onLongPress: () -> Unit = { },
-    onRemove: (() -> Unit)? = null
+    onRemove: (() -> Unit)? = null,
+    trackLabel: String? = null
 ) {
     val fav = prefs.getBoolean("music_fav_${s.id}", false)
     val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
@@ -4218,11 +4306,20 @@ private fun SongRow(
                 .border(1.5.dp, if (isCurrent) MusicAccent else Color(0xFF39424E), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Filled.MusicNote, null,
-                tint = if (isCurrent) MusicAccent else RoomTextDim,
-                modifier = Modifier.size(20.dp)
-            )
+            if (trackLabel != null) {
+                Text(
+                    trackLabel,
+                    color = if (isCurrent) MusicAccent else RoomTextDim,
+                    fontSize = if (trackLabel.length > 2) 10.5.sp else 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Icon(
+                    Icons.Filled.MusicNote, null,
+                    tint = if (isCurrent) MusicAccent else RoomTextDim,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
@@ -4288,10 +4385,20 @@ fun MusicLibraryScreen(
     LaunchedEffect(audioGranted) {
         if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context.contentResolver) }
     }
+    // Back steps out one level at a time (May, 2026-11-10): an
+    // album opened from inside an artist returns to that artist's
+    // album list, not all the way out to the tabs.
+    fun stepBackOneLevel() {
+        if (albumPick != null && artistPick != null) {
+            albumPick = null
+        } else {
+            albumPick = null
+            artistPick = null
+            playlistPick = null
+        }
+    }
     BackHandler(enabled = albumPick != null || artistPick != null || playlistPick != null) {
-        albumPick = null
-        artistPick = null
-        playlistPick = null
+        stepBackOneLevel()
     }
     fun isFav(s: SongItem) = prefs.getBoolean("music_fav_${s.id}", false)
     fun matches(s: SongItem) =
@@ -4301,9 +4408,7 @@ fun MusicLibraryScreen(
     val artists = songs.groupBy { it.artist }.entries.sortedBy { it.key.lowercase() }
     val inDetail = albumPick != null || artistPick != null || playlistPick != null
     BackHandler(enabled = inDetail) {
-        albumPick = null
-        artistPick = null
-        playlistPick = null
+        stepBackOneLevel()
     }
 
     if (addToSong != null) {
@@ -4374,11 +4479,7 @@ fun MusicLibraryScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
             IconButton(onClick = {
-                if (inDetail) {
-                    albumPick = null
-                    artistPick = null
-                    playlistPick = null
-                } else onBack()
+                if (inDetail) stepBackOneLevel() else onBack()
             }) {
                 Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White)
             }
@@ -4463,12 +4564,81 @@ fun MusicLibraryScreen(
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(10.dp))
+        if (artistPick != null && albumPick == null) {
+            // An artist opens onto their albums first (May,
+            // 2026-11-10): pick the record, then its songs — in
+            // track order, numbers showing. Play and Shuffle here
+            // still cover everything the artist has.
+            val artistSongs = songs.filter { it.artist == artistPick }
+            val artistAlbums = artistSongs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
+            val playOrder = artistSongs.sortedWith(compareBy<SongItem> { it.album.lowercase() }.then(byTrackOrder()))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = { if (playOrder.isNotEmpty()) onPlaySong(playOrder, 0) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Play", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { if (artistSongs.isNotEmpty()) onPlaySong(artistSongs.shuffled(), 0) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                ) {
+                    Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Shuffle", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("${artistAlbums.size} albums \u2022 ${artistSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(artistAlbums, key = { it.key }) { (name, list) ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { albumPick = name }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFF232A33))
+                                .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Album, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(Modifier.width(11.dp))
+                        Column {
+                            Text(
+                                name, color = Color.White, fontSize = 15.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${list.size} songs",
+                                color = RoomTextDim, fontSize = 12.5.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+            return@Column
+        }
         if (inDetail) {
-            val detailSongs = when {
+            val rawDetail = when {
                 albumPick != null -> songs.filter { it.album == albumPick }
                 artistPick != null -> songs.filter { it.artist == artistPick }
                 else -> playlistIds(prefs, playlistPick!!).mapNotNull { id -> songs.firstOrNull { it.id == id } }
-            }.filter { matches(it) }
+            }
+            // Inside an album the songs run in track order and
+            // carry their numbers (May, 2026-11-10); playlists
+            // keep the order she built them in.
+            val detailSongs = (if (albumPick != null) rawDetail.sortedWith(byTrackOrder()) else rawDetail)
+                .filter { matches(it) }
+            val multiDisc = rawDetail.map { trackDisc(it.track) }.distinct().size > 1
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs, 0) },
@@ -4522,7 +4692,8 @@ fun MusicLibraryScreen(
                                 writePlaylist(prefs, name, playlistIds(prefs, name).filter { it != s.id })
                                 favTick++
                             }
-                        } else null
+                        } else null,
+                        trackLabel = if (albumPick != null) trackLabel(s.track, multiDisc) else null
                     )
                 }
             }

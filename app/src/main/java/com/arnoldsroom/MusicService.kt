@@ -32,6 +32,7 @@ data class SongItem(
     val artist: String,
     val album: String,
     val durationMs: Long,
+    val track: Int = 0,
     val uri: String
 )
 
