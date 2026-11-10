@@ -1150,28 +1150,42 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
     // upper-right panes — sun wide (0.793, 0.145), tall (0.776, 0.078);
     // moon wide (0.802, 0.146), tall (0.774, 0.094).
     val stars = remember(tall) {
+        // Spread evenly instead of purely at random (May,
+        // 2026-11-10): random scatter clumped stars together and
+        // dropped some into hidden corners of the glass. The
+        // trapezoid is cut into a grid of cells — one star per cell,
+        // jittered inside it — so the whole skylight is covered, the
+        // edges are respected, and the moon stays clear.
         val rnd = kotlin.random.Random(if (tall) 7 else 42)
-        val n = if (tall) 18 else 22
+        val cols = if (tall) 6 else 7
+        val rowsN = 4
         val yTop = if (tall) 0.005f else 0.010f
         val yBot = if (tall) 0.235f else 0.270f
         val halfTop = if (tall) 0.45f else 0.46f
         val halfBot = if (tall) 0.19f else 0.28f
         val moonX = if (tall) 0.774f else 0.802f
         val moonY = if (tall) 0.094f else 0.146f
-        val moonR = if (tall) 0.060f else 0.055f
-        List(n) {
-            var fx = 0.5f
-            var fy = 0.05f
-            var tries = 0
-            do {
-                fy = yTop + rnd.nextFloat() * (yBot - yTop)
-                val half = halfTop + (halfBot - halfTop) * ((fy - yTop) / (yBot - yTop))
-                fx = 0.5f + (rnd.nextFloat() * 2f - 1f) * half
-                tries++
-            } while (tries < 6 &&
-                kotlin.math.hypot((fx - moonX).toDouble(), (fy - moonY).toDouble()) < moonR)
-            Triple(fx, fy, rnd.nextFloat())
+        val moonR = if (tall) 0.068f else 0.062f
+        val out = mutableListOf<Triple<Float, Float, Float>>()
+        for (r in 0 until rowsN) {
+            val bandTop = yTop + (yBot - yTop) * r / rowsN
+            val bandBot = yTop + (yBot - yTop) * (r + 1) / rowsN
+            for (c in 0 until cols) {
+                var placed: Triple<Float, Float, Float>? = null
+                var tries = 0
+                while (placed == null && tries < 8) {
+                    tries++
+                    val fy = bandTop + (0.25f + 0.5f * rnd.nextFloat()) * (bandBot - bandTop)
+                    val half = (halfTop + (halfBot - halfTop) * ((fy - yTop) / (yBot - yTop))) * 0.92f
+                    val cellW = 2f * half / cols
+                    val fx = 0.5f - half + cellW * (c + 0.25f + 0.5f * rnd.nextFloat())
+                    if (kotlin.math.hypot((fx - moonX).toDouble(), (fy - moonY).toDouble()) < moonR) continue
+                    placed = Triple(fx, fy, rnd.nextFloat())
+                }
+                placed?.let { out.add(it) }
+            }
         }
+        out
     }
     Canvas(Modifier.fillMaxSize()) {
         val scaleF = (size.width / 900f).coerceIn(0.7f, 1.6f)
