@@ -628,6 +628,7 @@ fun ArnoldsRoomApp() {
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
+    var city by remember { mutableStateOf<CityAmbiencePlayer?>(null) }
     fun startMusic() {
         try {
             if (music == null) {
@@ -638,9 +639,13 @@ fun ArnoldsRoomApp() {
             }
             music?.let { if (!it.isPlaying) it.start() }
         } catch (e: Exception) { /* music is a bonus, never crash over it */ }
+        // The city outside the window follows the song exactly —
+        // same switch, same rules (May, 2026-11-10).
+        try { if (city == null) city = CityAmbiencePlayer(); city?.start() } catch (e: Exception) { }
     }
     fun pauseMusic() {
         try { music?.let { if (it.isPlaying) it.pause() } } catch (e: Exception) { }
+        try { city?.stop() } catch (e: Exception) { }
     }
 
     // ----- Nightwave Plaza radio (May, 2026-11-10): a live vaporwave
@@ -1412,6 +1417,115 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     }
 }
 // thump plus a woody click that both die away in about a tenth of a second.
+// ---------- City ambience (May, 2026-11-10) ----------
+// A busy street outside the window, generated live in code, the
+// way the knock is: a low traffic rumble that swells as cars roll
+// past, a faint wash of street air, and a distant horn now and
+// then. It needs no audio file, and it is tied to the room song —
+// wherever the song plays, the city murmurs underneath it, and
+// the room's music button hushes both together.
+class CityAmbiencePlayer {
+    @Volatile private var running = false
+    private var thread: Thread? = null
+
+    fun start() {
+        if (running) return
+        running = true
+        if (thread?.isAlive == true) return
+        thread = Thread {
+            val rate = 22050
+            val minBuf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+            val t = try {
+                AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                            .setSampleRate(rate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(maxOf(minBuf, rate * 2))
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+            } catch (e: Exception) { null }
+            if (t == null) { running = false; return@Thread }
+            try { t.play() } catch (e: Exception) { running = false; return@Thread }
+            val rnd = java.util.Random()
+            val buf = FloatArray(1024)
+            var brown = 0f
+            var lp = 0f
+            var swell = 0.8f
+            var swellTarget = 0.8f
+            var swellTimer = 0
+            var carTimer = rate * 5
+            var carDur = 1
+            var carPos = -1
+            var carLp = 0f
+            var carBrown = 0f
+            var hornTimer = rate * 12
+            var hornPos = -1
+            var hornLen = 0
+            var hornFreq = 370f
+            var phase = 0f
+            var airLp = 0f
+            var fade = 0f
+            while (running) {
+                for (i in buf.indices) {
+                    if (fade < 1f) fade = minOf(1f, fade + 1f / (rate * 1.5f))
+                    if (--swellTimer <= 0) {
+                        swellTarget = 0.55f + rnd.nextFloat() * 0.75f
+                        swellTimer = rate * (2 + rnd.nextInt(4))
+                    }
+                    swell += (swellTarget - swell) * 0.0002f
+                    val white = rnd.nextFloat() * 2f - 1f
+                    brown = (brown + 0.02f * white) / 1.02f
+                    lp += 0.12f * (brown * 3.2f - lp)
+                    var out = lp * swell * 0.85f
+                    if (--carTimer <= 0) {
+                        carDur = rate * (2 + rnd.nextInt(2)); carPos = 0
+                        carTimer = rate * (5 + rnd.nextInt(9))
+                    }
+                    if (carPos in 0 until carDur) {
+                        val k = carPos.toFloat() / carDur
+                        val env = Math.sin(3.14159 * k).toFloat()
+                        carBrown = (carBrown + 0.05f * (rnd.nextFloat() * 2f - 1f)) / 1.05f
+                        carLp += 0.3f * (carBrown * 3.0f - carLp)
+                        out += carLp * env * 0.5f
+                        carPos++
+                    }
+                    if (--hornTimer <= 0) {
+                        hornLen = (rate * 0.22f).toInt(); hornPos = 0
+                        hornFreq = if (rnd.nextBoolean()) 349f else 392f
+                        hornTimer = rate * (14 + rnd.nextInt(26))
+                    }
+                    if (hornPos in 0 until hornLen) {
+                        val k = hornPos.toFloat() / hornLen
+                        val env = Math.sin(3.14159 * k).toFloat()
+                        phase += 6.28318f * hornFreq / rate
+                        out += Math.sin(phase.toDouble()).toFloat() * env * 0.028f
+                        hornPos++
+                    }
+                    airLp += 0.02f * ((rnd.nextFloat() * 2f - 1f) * 0.4f - airLp)
+                    out += airLp * 0.12f
+                    buf[i] = (out * 0.55f * fade).coerceIn(-0.9f, 0.9f)
+                }
+                try { t.write(buf, 0, buf.size, AudioTrack.WRITE_BLOCKING) } catch (e: Exception) { break }
+            }
+            try { t.stop() } catch (e: Exception) { }
+            try { t.release() } catch (e: Exception) { }
+        }
+        thread?.start()
+    }
+
+    fun stop() { running = false }
+}
+
 fun buildKnockTrack(): AudioTrack {
     val sampleRate = 44100
     val frames = (sampleRate * 0.11).toInt()
@@ -2612,7 +2726,7 @@ fun SettingsScreen(
                     "• Remote on the rug — shuffle a random video\n" +
                     "• Joystick on the rug — your music: songs, albums, artists, favorites, and playlists you make yourself\n" +
                     "• Door — settings (you're here)\n\n" +
-                    "How the sound works: the room song is the app's ambience. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
+                    "How the sound works: the room song is the app's ambience, and underneath it you can hear the street outside the window — traffic rolling by, a distant horn now and then. The music button in the room hushes the song and the city together. It plays in the room and follows you through the lists and settings, and steps aside only when you play something — a song, a video, or the radio. Whatever you played last wins. Videos remember where you left off; songs always start from the beginning, the way you asked.\n\n" +
                     "Every list wears a strip of the room's painting at the top, in the same day or night as the room. Flip day and night any time with the sun-and-moon button in the room, and the star button beside it turns the twinkling stars and sun glare off or on.\n\n" +
                     "Long-press a video to file it, favorite it, or mark it watched. Long-press a song to add it to a playlist. The little TV and the music pop-up travel with you from screen to screen, and the TV reshapes itself to the video — old 4:3 shows get a 4:3 TV, wide movies get a wide one. On the Fold opened up, lists split into two panes so you can browse and preview at the same time.",
                     color = RoomTextDim, fontSize = 14.sp
