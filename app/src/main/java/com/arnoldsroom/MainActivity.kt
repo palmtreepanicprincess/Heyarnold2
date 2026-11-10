@@ -672,6 +672,13 @@ fun ArnoldsRoomApp() {
     fun playSongs(queue: List<SongItem>, index: Int) {
         if (radioActive) stopRadio()
         pauseMusic()
+        // Her controls outside the app live in the music
+        // notification — make sure Android will actually show it.
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            try { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) } catch (e: Exception) { }
+        }
         MusicState.queue = queue
         val startPos = if (queue.isNotEmpty()) prefs.getLong("music_pos_${queue[index].id}", 0L) else 0L
         musicAction(context, MusicService.ACTION_PLAY_QUEUE) {

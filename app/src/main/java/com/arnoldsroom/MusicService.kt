@@ -21,6 +21,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 
 // One song from the phone's own music library (MediaStore).
 data class SongItem(
@@ -58,6 +61,7 @@ object MusicState {
 // play-pause / next / stop.
 class MusicService : Service() {
     private var player: ExoPlayer? = null
+    private var session: MediaSessionCompat? = null
     private val handler = Handler(Looper.getMainLooper())
     private var sleepRunnable: Runnable? = null
     private var tickCount = 0
@@ -146,6 +150,13 @@ class MusicService : Service() {
             )
             .addAction(android.R.drawable.ic_media_next, "Next", svcAction(ACTION_NEXT, 12))
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", svcAction(ACTION_STOP, 13))
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(session?.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setOngoing(MusicState.playing)
             .build()
     }
@@ -153,6 +164,42 @@ class MusicService : Service() {
     private fun postNotification() {
         val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         try { mgr.notify(NOTIF_ID, buildNotification()) } catch (e: Exception) { }
+    }
+
+
+    private fun updateSessionState() {
+        val s = session ?: return
+        val p = player ?: return
+        try {
+            val state = when {
+                p.isPlaying -> PlaybackStateCompat.STATE_PLAYING
+                p.playbackState == Player.STATE_BUFFERING -> PlaybackStateCompat.STATE_BUFFERING
+                else -> PlaybackStateCompat.STATE_PAUSED
+            }
+            s.setPlaybackState(
+                PlaybackStateCompat.Builder()
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or
+                            PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_STOP or
+                            PlaybackStateCompat.ACTION_SEEK_TO
+                    )
+                    .setState(state, p.currentPosition.coerceAtLeast(0L), if (p.isPlaying) MusicState.speed else 0f)
+                    .build()
+            )
+            val song = MusicState.current
+            s.setMetadata(
+                MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song?.title ?: "Music")
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song?.artist ?: "")
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song?.album ?: "")
+                    .putLong(
+                        MediaMetadataCompat.METADATA_KEY_DURATION,
+                        if (MusicState.durationMs > 0) MusicState.durationMs else (song?.durationMs ?: 0L)
+                    )
+                    .build()
+            )
+        } catch (e: Exception) { }
     }
 
     private fun ensurePlayer(): ExoPlayer {
@@ -192,12 +239,14 @@ class MusicService : Service() {
                     lastSongId = it.id
                     MusicState.durationMs = it.durationMs
                 }
+                updateSessionState()
                 postNotification()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 MusicState.playing = isPlaying
                 if (!isPlaying) savePos()
+                updateSessionState()
                 postNotification()
             }
 
@@ -220,6 +269,29 @@ class MusicService : Service() {
             }
         })
         player = p
+        if (session == null) {
+            session = MediaSessionCompat(this, "ArnoldsRoomMusic").apply {
+                setCallback(object : MediaSessionCompat.Callback() {
+                    override fun onPlay() { this@MusicService.player?.play() }
+                    override fun onPause() { this@MusicService.player?.pause() }
+                    override fun onSkipToNext() {
+                        val pl = this@MusicService.player ?: return
+                        if (pl.hasNextMediaItem()) pl.seekToNextMediaItem()
+                        pl.play()
+                    }
+                    override fun onSkipToPrevious() {
+                        val pl = this@MusicService.player ?: return
+                        if (pl.currentPosition > 3000) pl.seekTo(0)
+                        else if (pl.hasPreviousMediaItem()) pl.seekToPreviousMediaItem()
+                        else pl.seekTo(0)
+                        pl.play()
+                    }
+                    override fun onStop() { stopEverything() }
+                    override fun onSeekTo(pos: Long) { this@MusicService.player?.seekTo(pos) }
+                })
+                isActive = true
+            }
+        }
         return p
     }
 
@@ -255,6 +327,7 @@ class MusicService : Service() {
                     lastSongId = q[idx].id
                     handler.removeCallbacks(ticker)
                     handler.post(ticker)
+                    updateSessionState()
                     postNotification()
                 }
             }
@@ -338,6 +411,9 @@ class MusicService : Service() {
         MusicState.durationMs = 0L
         MusicState.sleepMinutes = 0
         lastSongId = -1L
+        try { session?.isActive = false } catch (e: Exception) { }
+        try { session?.release() } catch (e: Exception) { }
+        session = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -346,6 +422,8 @@ class MusicService : Service() {
         handler.removeCallbacks(ticker)
         try { player?.release() } catch (e: Exception) { }
         player = null
+        try { session?.release() } catch (e: Exception) { }
+        session = null
         super.onDestroy()
     }
 }
