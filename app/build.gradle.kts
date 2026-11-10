@@ -32,6 +32,18 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
 }
+// Fetch the Baloo 2 cartoon font at build time (kept out of the repo: no binary upload needed).
+val balooFile = layout.projectDirectory.file("src/main/res/font/baloo2.ttf").asFile
+val fetchBalooFont = tasks.register<Exec>("fetchBalooFont") {
+    onlyIf { !balooFile.exists() || balooFile.length() < 10_000 }
+    doFirst { balooFile.parentFile.mkdirs() }
+    commandLine(
+        "curl", "-g", "-fL", "--retry", "3", "-o", balooFile.absolutePath,
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/baloo2/Baloo2%5Bwght%5D.ttf"
+    )
+}
+tasks.named("preBuild") { dependsOn(fetchBalooFont) }
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
     implementation("androidx.core:core-ktx:1.15.0")
