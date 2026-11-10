@@ -115,6 +115,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -574,6 +575,9 @@ fun ArnoldsRoomApp() {
         )
     }
     var doorGone by remember { mutableStateOf(false) }
+    // Sky effects master switch (May, 2026-11-10): one button beside
+    // the music button turns the stars AND the lens flare off/on.
+    var fxOn by remember { mutableStateOf(true) }
 
     // ----- Room music: plays on the room screen, pauses on any tap / when the app is left -----
     var music by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -769,6 +773,8 @@ fun ArnoldsRoomApp() {
                 musicOn = musicOn,
                 onToggleMusic = { musicOn = !musicOn },
                 onOpenRadio = { showRadio = true },
+                fxOn = fxOn,
+                onToggleFx = { fxOn = !fxOn },
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -950,6 +956,37 @@ fun ArnoldsRoomApp() {
                         .padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
+            // The effects button rides beside it on the doors too.
+            Column(
+                Modifier.align(Alignment.TopStart).padding(start = 74.dp, top = 12.dp)
+                    .clickable { fxOn = !fxOn },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(46.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                        .background(Color(0xCC10131A))
+                        .border(2.5.dp, RoomSky, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        if (fxOn) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        if (fxOn) "Turn effects off" else "Turn effects on",
+                        tint = if (fxOn) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (fxOn) "Effects" else "No FX",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xAA10131A))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                )
+            }
         }
     }
     }
@@ -1072,11 +1109,14 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             // over the already-bright painted sun (May: 'no lens flare'
             // even when it was centered right) — adding light is what
             // makes a flare read as a flare.
-            val radius = size.width * 0.19f * (0.92f + 0.16f * breathe)
+            // The wide (inner Fold screen) flare runs gentler than the
+            // tall one — at the size the big screen shows it, the tall
+            // dose was overwhelming (May, 2026-11-10).
+            val radius = size.width * (if (tall) 0.19f else 0.17f) * (0.92f + 0.16f * breathe)
             drawCircle(
                 brush = androidx.compose.ui.graphics.Brush.radialGradient(
                     listOf(
-                        Color(0xFFFFF9C4).copy(alpha = 0.11f + 0.06f * breathe),
+                        Color(0xFFFFF9C4).copy(alpha = (if (tall) 0.11f else 0.07f) + (if (tall) 0.06f else 0.04f) * breathe),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
@@ -1092,7 +1132,7 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             // against the burst instead of hiding inside it.
             val sway = 10f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
             val rayLen = size.width * 0.12f * (0.90f + 0.25f * breathe)
-            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.16f)
+            val rayCol = Color(0xFFFFF59D).copy(alpha = if (tall) 0.16f else 0.10f)
             for (k in 0..5) {
                 val ang = Math.toRadians((sway + k * 30f).toDouble())
                 val dx = kotlin.math.cos(ang).toFloat()
@@ -1112,8 +1152,8 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
             val dirX = 0.5f - sunFx
             val dirY = 0.5f - sunFy
             listOf(
-                Triple(0.62f, 0.08f, 30f),
-                Triple(1.05f, 0.055f, 18f)
+                Triple(0.62f, if (tall) 0.08f else 0.05f, 30f),
+                Triple(1.05f, if (tall) 0.055f else 0.035f, 18f)
             ).forEach { (k, alpha, rad) ->
                 val drift = (breathe - 0.5f) * 0.012f
                 drawCircle(
@@ -1147,7 +1187,10 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
         spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
     )
     val color = if (tapped) RoomYellow else spot.color
-    val glowAlpha = 0.15f + 0.23f * pulse
+    // The Plaza ring's pink reads hotter than the other colors at the
+    // same alpha — its glow is dimmed a touch so all the rings pulse
+    // at the same felt strength (May, 2026-11-10).
+    val glowAlpha = (0.15f + 0.23f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1329,7 +1372,7 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float, n
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
@@ -1525,7 +1568,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     )
                 }
             }
-            SkyEffects(night = night, tall = tallMode, t = skyT)
+            if (fxOn) SkyEffects(night = night, tall = tallMode, t = skyT)
             activeSpots.forEachIndexed { i, spot ->
                 Box(
                     Modifier.offset(
@@ -1639,6 +1682,55 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             Spacer(Modifier.height(2.dp))
             Text(
                 if (musicOn) "Music" else "Muted",
+                color = Color.White,
+                fontSize = if (tallMode) 12.5.sp else 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xAA10131A))
+                    .padding(horizontal = if (tallMode) 6.dp else 5.dp, vertical = if (tallMode) 1.dp else 0.dp)
+            )
+        }
+        // Effects toggle (May, 2026-11-10): sits right beside the music
+        // button; one tap stills the sky — stars and lens flare both
+        // gone — and a second tap brings them back.
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 74.dp, top = 12.dp)
+                .combinedClickable(onClick = onToggleFx),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(46.dp)
+                    .shadow(6.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(if (musicCrop != null) Color.Transparent else Color(0xCC10131A))
+                    .border(2.5.dp, RoomSky, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (musicCrop != null) {
+                    Image(
+                        bitmap = musicCrop.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x59000000)))
+                }
+                Crossfade(targetState = fxOn, animationSpec = tween(300), label = "fxIcon") { on ->
+                    Icon(
+                        if (on) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        if (on) "Turn effects off" else "Turn effects on",
+                        tint = if (on) RoomYellow else RoomTextDim,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (fxOn) "Effects" else "No FX",
                 color = Color.White,
                 fontSize = if (tallMode) 12.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Bold,
@@ -2830,12 +2922,9 @@ fun PlayerScreen(
     }
 }
 
-// ---------- Mini player: a small, movable, resizable video box over the room ----------
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-// The Nightwave Plaza pop-up: a small draggable player card in the
-// room, moved by its title bar, just like the video pop-up. Closing
-// it doesn't stop the stream — reopen it from the Plaza ring to stop.
+// ---------- Nightwave Plaza pop-up: a small draggable player card ----------
+// Moved by its title bar, just like the video pop-up. Closing it
+// doesn't stop the stream — reopen it from the Plaza ring to stop.
 @Composable
 fun RadioPlayerBox(
     playing: Boolean,
@@ -2918,6 +3007,9 @@ fun RadioPlayerBox(
     }
 }
 
+// ---------- Mini player: a small, movable, resizable video box over the room ----------
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun MiniPlayerBox(
     queue: List<VideoItem>,
     startIndex: Int,
