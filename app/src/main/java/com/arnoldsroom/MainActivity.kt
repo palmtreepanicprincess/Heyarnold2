@@ -1200,14 +1200,21 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
             contentAlignment = Alignment.Center
         ) {
             // The halo: the spot's color, breathed out around the circle.
+            // Drawn at its true size, not scaled up from a smaller box —
+            // scaling a clipped circle up rendered its edge as a faceted
+            // little octagon inside the ring (May, 2026-11-10). The
+            // three-stop gradient softens the falloff further.
             Box(
                 Modifier
-                    .size(chipDp)
-                    .scale(1.5f)
+                    .size(chipDp * 1.5f)
                     .clip(CircleShape)
                     .background(
                         androidx.compose.ui.graphics.Brush.radialGradient(
-                            listOf(color.copy(alpha = glowAlpha), Color.Transparent)
+                            listOf(
+                                color.copy(alpha = glowAlpha),
+                                color.copy(alpha = glowAlpha * 0.45f),
+                                Color.Transparent
+                            )
                         )
                     )
             )
