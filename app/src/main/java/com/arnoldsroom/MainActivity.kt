@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -239,6 +241,8 @@ fun ArnoldsRoomApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
+    var nightOverride by remember { mutableStateOf<Boolean?>(null) }
+    val night = nightOverride ?: isNightNow()
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var granted by remember {
         mutableStateOf(
@@ -334,6 +338,8 @@ fun ArnoldsRoomApp() {
     Box(Modifier.fillMaxSize().background(RoomDark)) {
         when (val s = screen) {
             is Screen.Room -> RoomScreen(
+                night = night,
+                onToggleNight = { nightOverride = !night },
                 onHotspot = { dest -> go(dest) },
                 onShuffle = {
                     pauseMusic()
@@ -402,15 +408,31 @@ fun findDrawableId(context: Context, exact: String): Int {
     } catch (e: Exception) { 0 }
 }
 
+fun isNightNow(): Boolean {
+    val h = java.time.LocalTime.now().hour
+    return h >= 19 || h < 7
+}
+
 @Composable
-fun rememberRoomBitmap(tall: Boolean): Bitmap? {
+fun rememberRoomBitmap(tall: Boolean, night: Boolean): Bitmap? {
     val context = LocalContext.current
-    return remember(tall) {
+    return remember(tall, night) {
         try {
-            var id = if (tall) findDrawableId(context, "arnolds_room_tall")
-                     else context.resources.getIdentifier("arnolds_room", "drawable", context.packageName)
-            if (id == 0) id = context.resources.getIdentifier("arnolds_room", "drawable", context.packageName)
-            if (id != 0) android.graphics.BitmapFactory.decodeResource(context.resources, id) else null
+            val names = when {
+                tall && night -> listOf("arnolds_room_tall_night", "arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room_night", "arnolds_room")
+                tall -> listOf("arnolds_room_tall", "file_00000000266481f58cd2d715ef42fabe", "arnolds_room")
+                night -> listOf("arnolds_room_night", "arnolds_room")
+                else -> listOf("arnolds_room")
+            }
+            var bmp: Bitmap? = null
+            for (n in names) {
+                val id = findDrawableId(context, n)
+                if (id != 0) {
+                    bmp = android.graphics.BitmapFactory.decodeResource(context.resources, id)
+                    if (bmp != null) break
+                }
+            }
+            bmp
         } catch (e: Exception) { null }
     }
 }
@@ -422,7 +444,7 @@ data class Hotspot(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT)),
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search),
@@ -448,7 +470,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit) {
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
         val activeSpots = if (tallMode) tallSpots else spots
-        val roomBitmap = rememberRoomBitmap(tallMode)
+        val roomBitmap = rememberRoomBitmap(tallMode, night)
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
             ?: if (tallMode) 875f / 1798f else 1704f / 2048f
         var drawnW = maxWDp
@@ -518,6 +540,39 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit) {
                 .background(Color(0x9910131A))
                 .padding(horizontal = 14.dp, vertical = 6.dp)
         )
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+                .combinedClickable(onClick = onToggleNight),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xCC10131A))
+                    .border(1.5.dp, RoomSky, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (night) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                    if (night) "Day" else "Night",
+                    tint = RoomYellow, modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (night) "Day" else "Night",
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xAA10131A))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            )
+        }
     }
 }
 
