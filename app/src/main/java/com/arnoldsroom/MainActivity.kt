@@ -815,9 +815,13 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
         Spacer(Modifier.height(2.dp))
         Text(
             spot.label,
-            color = spot.color,
+            color = Color(0xFF10131A),
             fontSize = if (compact) 11.sp else 13.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(5.dp))
+                .background(spot.color.copy(alpha = 0.95f))
+                .padding(horizontal = 4.dp, vertical = 0.dp)
         )
     }
 }
@@ -840,7 +844,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.505f, 0.135f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
         Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.40f, 0.395f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.664f, 0.386f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
+        Hotspot(0.650f, 0.400f, "TV", Icons.Filled.Tv, Screen.Library(Filter.ALL), Color(0xFFFF5722)),
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
@@ -952,8 +956,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
             val cy = offY + drawnH * spot.fy
             Box(
                 Modifier.offset(
-                    x = cx - if (tallMode) 27.dp else 30.dp,
-                    y = cy - if (tallMode) 27.dp else 30.dp
+                    x = cx - if (tallMode) 21.dp else 28.dp,
+                    y = cy - if (tallMode) 21.dp else 28.dp
                 )
             ) {
                 RoomChip(
@@ -1021,7 +1025,11 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 if (musicOn) "Music" else "Muted",
                 color = Color.White,
                 fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xAA10131A))
+                    .padding(horizontal = 4.dp, vertical = 0.dp)
             )
         }
         Column(
@@ -1062,7 +1070,11 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                 if (night) "Day" else "Night",
                 color = Color.White,
                 fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xAA10131A))
+                    .padding(horizontal = 4.dp, vertical = 0.dp)
             )
         }
     }
