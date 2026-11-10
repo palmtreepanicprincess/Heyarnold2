@@ -1100,7 +1100,7 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
         spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMediumLow), label = "chipPop"
     )
     val color = if (tapped) RoomYellow else spot.color
-    val glowAlpha = 0.13f + 0.17f * pulse
+    val glowAlpha = 0.15f + 0.23f * pulse
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
