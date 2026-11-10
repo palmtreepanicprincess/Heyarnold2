@@ -3673,7 +3673,7 @@ Icon(
                             launch {
                                 detectDragGestures { change, drag ->
                                     change.consume()
-                                    widthDpF = (widthDpF + drag.x / density).coerceIn(150f, 480f)
+                                    widthDpF = (widthDpF + drag.x / density.density).coerceIn(150f, 480f)
                                 }
                                 }
                             }
