@@ -949,16 +949,33 @@ fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
 @Composable
 fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
     // A living sky over the painting's own sky, drawn inside the
-    // painting's coordinate system so it tracks on any screen: at night
-    // the stars over the skylight twinkle, each on its own slow phase;
-    // by day the sun through the skylight breathes a soft glare with a
-    // couple of faint lens ghosts trailing down the light's line.
+    // painting's coordinate system so it tracks on any screen. The
+    // shapes come from the paintings themselves (checked against them
+    // 2026-11-10): the glass ceiling is a wide trapezoid spanning the
+    // whole top and narrowing downward, and the sun/moon sits in the
+    // upper-right panes — wide (0.79, 0.135), tall (0.66, 0.095) — not
+    // the middle, where an earlier version wrongly put the glare.
     val stars = remember(tall) {
         val rnd = kotlin.random.Random(if (tall) 7 else 42)
-        val n = if (tall) 12 else 16
+        val n = if (tall) 18 else 22
+        val yTop = if (tall) 0.005f else 0.010f
+        val yBot = if (tall) 0.235f else 0.270f
+        val halfTop = if (tall) 0.45f else 0.46f
+        val halfBot = if (tall) 0.19f else 0.28f
+        val moonX = if (tall) 0.66f else 0.79f
+        val moonY = if (tall) 0.095f else 0.135f
+        val moonR = if (tall) 0.060f else 0.055f
         List(n) {
-            val fx = if (tall) 0.38f + rnd.nextFloat() * 0.24f else 0.40f + rnd.nextFloat() * 0.20f
-            val fy = if (tall) 0.015f + rnd.nextFloat() * 0.135f else 0.02f + rnd.nextFloat() * 0.22f
+            var fx = 0.5f
+            var fy = 0.05f
+            var tries = 0
+            do {
+                fy = yTop + rnd.nextFloat() * (yBot - yTop)
+                val half = halfTop + (halfBot - halfTop) * ((fy - yTop) / (yBot - yTop))
+                fx = 0.5f + (rnd.nextFloat() * 2f - 1f) * half
+                tries++
+            } while (tries < 6 &&
+                kotlin.math.hypot((fx - moonX).toDouble(), (fy - moonY).toDouble()) < moonR)
             Triple(fx, fy, rnd.nextFloat())
         }
     }
@@ -978,16 +995,17 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
                 drawLine(col, Offset(cx, cy - r), Offset(cx, cy + r), strokeWidth = r * 0.20f, cap = StrokeCap.Round)
             }
         } else {
-            val sunFx = 0.505f
-            val sunFy = if (tall) 0.070f else 0.135f
+            val sunFx = if (tall) 0.66f else 0.79f
+            val sunFy = if (tall) 0.095f else 0.135f
             val cx = sunFx * size.width
             val cy = sunFy * size.height
             val breathe = 0.5f + 0.5f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
-            val radius = size.width * 0.20f * (0.95f + 0.08f * breathe)
+            // The warm halo, breathing visibly this time.
+            val radius = size.width * 0.17f * (0.92f + 0.16f * breathe)
             drawCircle(
                 brush = androidx.compose.ui.graphics.Brush.radialGradient(
                     listOf(
-                        Color(0xFFFFF9C4).copy(alpha = 0.20f + 0.10f * breathe),
+                        Color(0xFFFFF9C4).copy(alpha = 0.34f + 0.18f * breathe),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
@@ -996,18 +1014,42 @@ fun SkyEffects(night: Boolean, tall: Boolean, t: Float) {
                 radius = radius,
                 center = Offset(cx, cy)
             )
-            // Faint lens ghosts on the sun-through-center line.
-            val gx = size.width * 0.497f
-            drawCircle(
-                Color(0xFFB3E5FC).copy(alpha = 0.045f + 0.012f * breathe),
-                radius = 26f * scaleF,
-                center = Offset(gx, size.height * 0.60f)
-            )
-            drawCircle(
-                Color(0xFFFFF9C4).copy(alpha = 0.030f + 0.010f * breathe),
-                radius = 15f * scaleF,
-                center = Offset(gx, size.height * 0.74f)
-            )
+            // Four soft rays around the painted sunburst, swaying gently
+            // and stretching with the breath — the visible motion.
+            val sway = 10f * kotlin.math.sin(t * 2f * Math.PI.toFloat())
+            val rayLen = size.width * (0.055f + 0.030f * breathe)
+            val rayCol = Color(0xFFFFF59D).copy(alpha = 0.16f + 0.12f * breathe)
+            for (k in 0..3) {
+                val ang = Math.toRadians((sway + k * 45f).toDouble())
+                val dx = kotlin.math.cos(ang).toFloat()
+                val dy = kotlin.math.sin(ang).toFloat()
+                drawLine(
+                    rayCol,
+                    Offset(cx - dx * rayLen * 0.35f, cy - dy * rayLen * 0.35f),
+                    Offset(cx + dx * rayLen, cy + dy * rayLen),
+                    strokeWidth = 3.2f * scaleF,
+                    cap = StrokeCap.Round
+                )
+            }
+            // Lens ghosts on the sun-through-center line, drifting a
+            // breath along it: wide sun throws them lower-left, tall
+            // sun throws them nearly straight down.
+            val dirX = 0.5f - sunFx
+            val dirY = 0.5f - sunFy
+            listOf(
+                Triple(0.62f, 0.075f, 24f),
+                Triple(1.05f, 0.050f, 14f)
+            ).forEach { (k, alpha, rad) ->
+                val drift = (breathe - 0.5f) * 0.012f
+                drawCircle(
+                    Color(0xFFB3E5FC).copy(alpha = alpha + 0.02f * breathe),
+                    radius = rad * scaleF,
+                    center = Offset(
+                        (sunFx + dirX * (1f + k) + drift) * size.width,
+                        (sunFy + dirY * (1f + k) + drift) * size.height
+                    )
+                )
+            }
         }
     }
 }
@@ -1254,33 +1296,9 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.712f, 0.547f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.905f, 0.478f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252))
     )
-    // Shake the phone while you're in the room and Shuffle plays something.
+    // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
+    // gone; tapping the remote is the way to shuffle now.)
     val sensorContext = LocalContext.current
-    DisposableEffect(Unit) {
-        val sm = sensorContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val accel = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        var lastShake = 0L
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(e: SensorEvent) {
-                val gx = e.values[0] / SensorManager.GRAVITY_EARTH
-                val gy = e.values[1] / SensorManager.GRAVITY_EARTH
-                val gz = e.values[2] / SensorManager.GRAVITY_EARTH
-                val g = kotlin.math.sqrt(gx * gx + gy * gy + gz * gz)
-                if (g > 2.1f) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastShake > 1500L) {
-                        lastShake = now
-                        onShuffle()
-                    }
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-        if (sm != null && accel != null) {
-            sm.registerListener(listener, accel, SensorManager.SENSOR_DELAY_UI)
-        }
-        onDispose { sm?.unregisterListener(listener) }
-    }
     // The hint: shows on arrival, fades after 4 idle seconds, and comes back
     // whenever a blank spot in the room is tapped (which restarts the timer).
     var hintVisible by remember { mutableStateOf(true) }
