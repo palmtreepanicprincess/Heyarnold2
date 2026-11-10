@@ -835,8 +835,6 @@ fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, compact: 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
 // Opening moment: a pair of doors opens into the room each time the app starts.
 @Composable
 fun DoorIntro(onDone: () -> Unit) {
@@ -886,6 +884,8 @@ fun RowScope.DoorPanel(knobOnRight: Boolean, toLeft: Boolean, progress: Float) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit) {
     val spots = listOf(
         Hotspot(0.50f, 0.10f, "New", Icons.Filled.History, Screen.Library(Filter.RECENT), Color(0xFFFF8F00)),
