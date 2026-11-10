@@ -945,7 +945,14 @@ fun ArnoldsRoomApp() {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    if (miniQueue == null && musicOn && doorGone && !radioActive && !MusicState.playing && !MusicState.wantsPlay && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
+                    // Radio state is read LIVE here, not through
+                    // radioActive (May, 2026-11-10): this observer
+                    // outlives the composition that created it, and
+                    // radioActive is a computed value, not state —
+                    // its stale copy kept restarting the room song
+                    // over the playing radio every time she came
+                    // back to the app.
+                    if (miniQueue == null && musicOn && doorGone && !RadioState.playing && !RadioState.buffering && !MusicState.playing && !MusicState.wantsPlay && screen !is Screen.Player && screen !is Screen.MusicPlayer) startMusic()
                 }
                 Lifecycle.Event.ON_STOP -> { pauseMusic() }
                 else -> { }
