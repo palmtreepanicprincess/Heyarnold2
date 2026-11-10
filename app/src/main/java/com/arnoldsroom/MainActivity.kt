@@ -24,6 +24,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -119,8 +129,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ---------- Theme colours pulled from the room ----------
@@ -442,7 +456,15 @@ fun ArnoldsRoomApp() {
     }
 
     Box(Modifier.fillMaxSize().background(RoomDark)) {
-        when (val s = screen) {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                (fadeIn(tween(240)) + scaleIn(initialScale = 0.985f, animationSpec = tween(240))) togetherWith
+                    fadeOut(tween(160))
+            },
+            label = "screen"
+        ) { s ->
+            when (s) {
             is Screen.Room -> RoomScreen(
                 night = night,
                 onToggleNight = { nightOverride = !night },
@@ -550,6 +572,7 @@ fun ArnoldsRoomApp() {
                     screen = Screen.Room
                 }
             )
+            }
         }
         if (screen is Screen.Room) {
             miniQueue?.let { q ->
@@ -612,6 +635,76 @@ data class Hotspot(
     val fx: Float, val fy: Float, val label: String, val icon: ImageVector, val dest: Screen?
 )
 
+fun cropAround(src: Bitmap, fx: Float, fy: Float, frac: Float = 0.17f): Bitmap {
+    val side = (src.width * frac).toInt().coerceAtLeast(24)
+    val cx = (src.width * fx).toInt()
+    val cy = (src.height * fy).toInt()
+    val x = (cx - side / 2).coerceIn(0, (src.width - side).coerceAtLeast(0))
+    val y = (cy - side / 2).coerceIn(0, (src.height - side).coerceAtLeast(0))
+    val s2 = minOf(side, src.width - x, src.height - y)
+    return Bitmap.createBitmap(src, x, y, s2, s2)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun RoomChip(spot: Hotspot, index: Int, tapped: Boolean, art: Bitmap?, onTap: () -> Unit) {
+    val scale = remember { Animatable(0.6f) }
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(60L * index)
+        launch { alpha.animateTo(1f, tween(250)) }
+        scale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow))
+    }
+    LaunchedEffect(tapped) {
+        if (tapped) {
+            scale.animateTo(1.32f, tween(110))
+            scale.animateTo(1.14f, tween(140))
+        }
+    }
+    Column(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                this.alpha = alpha.value
+            }
+            .combinedClickable(onClick = onTap),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(if (tapped) RoomOrange else Color(0xCC10131A))
+                .border(1.5.dp, if (tapped) RoomYellow else RoomSky, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (art != null) {
+                Image(
+                    bitmap = art.asImageBitmap(),
+                    contentDescription = spot.label,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (tapped) Box(Modifier.fillMaxSize().background(Color(0x55FF7A29)))
+            } else {
+                Icon(spot.icon, spot.label, tint = RoomYellow, modifier = Modifier.size(22.dp))
+            }
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            spot.label,
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xAA10131A))
+                .padding(horizontal = 5.dp, vertical = 1.dp)
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolean, onToggleNight: () -> Unit) {
@@ -635,12 +728,34 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         Hotspot(0.647f, 0.523f, "Shuffle", Icons.Filled.Shuffle, null),
         Hotspot(0.890f, 0.470f, "Settings", Icons.Filled.Settings, Screen.Settings)
     )
+    var tappedLabel by remember { mutableStateOf<String?>(null) }
+    var zoomOrigin by remember { mutableStateOf(TransformOrigin.Center) }
+    val roomZoom = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        roomZoom.snapTo(1.05f)
+        roomZoom.animateTo(1f, tween(450))
+    }
+    fun activate(spot: Hotspot) {
+        if (tappedLabel != null) return
+        tappedLabel = spot.label
+        zoomOrigin = TransformOrigin(spot.fx, spot.fy)
+        scope.launch {
+            roomZoom.animateTo(1.07f, tween(240))
+            val d = spot.dest
+            if (d != null) onHotspot(d) else onShuffle()
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         val maxWDp = maxWidth
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
         val activeSpots = if (tallMode) tallSpots else spots
         val roomBitmap = rememberRoomBitmap(tallMode, night)
+        val crops = remember(roomBitmap, tallMode) {
+            if (roomBitmap == null) emptyMap<String, Bitmap>()
+            else activeSpots.associate { it.label to cropAround(roomBitmap, it.fx, it.fy) }
+        }
         val aspect = roomBitmap?.let { it.width.toFloat() / it.height.toFloat() }
             ?: if (tallMode) 783f / 2007f else 1704f / 2048f
         var drawnW = maxWDp
@@ -648,53 +763,42 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
         if (drawnH > maxHDp) { drawnH = maxHDp; drawnW = maxHDp * aspect }
         val offX = (maxWDp - drawnW) / 2
         val offY = (maxHDp - drawnH) / 2
-        if (roomBitmap != null) {
-            Image(
-                bitmap = roomBitmap.asImageBitmap(),
-                contentDescription = "Arnold's room",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(
-                Modifier.fillMaxSize().background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(Color(0xFF2A4D8F), RoomTeal, RoomOrange)
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                scaleX = roomZoom.value
+                scaleY = roomZoom.value
+                transformOrigin = zoomOrigin
+            }
+        ) {
+            Crossfade(targetState = roomBitmap, animationSpec = tween(450), label = "roomArt") { bmp ->
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Arnold's room",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
                     )
-                )
-            )
+                } else {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color(0xFF2A4D8F), RoomTeal, RoomOrange)
+                            )
+                        )
+                    )
+                }
+            }
         }
-        activeSpots.forEach { spot ->
+        activeSpots.forEachIndexed { i, spot ->
             val cx = offX + drawnW * spot.fx
             val cy = offY + drawnH * spot.fy
-            Column(
-                modifier = Modifier
-                    .offset(x = cx - 27.dp, y = cy - 27.dp)
-                    .combinedClickable(
-                        onClick = { spot.dest?.let { onHotspot(it) } ?: onShuffle() }
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xCC10131A))
-                        .border(1.5.dp, RoomSky, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(spot.icon, spot.label, tint = RoomYellow, modifier = Modifier.size(22.dp))
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    spot.label,
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xAA10131A))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
+            Box(Modifier.offset(x = cx - 27.dp, y = cy - 27.dp)) {
+                RoomChip(
+                    spot = spot,
+                    index = i,
+                    tapped = tappedLabel == spot.label,
+                    art = crops[spot.label],
+                    onTap = { activate(spot) }
                 )
             }
         }
@@ -725,11 +829,13 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, night: Boolea
                     .border(1.5.dp, RoomSky, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    if (night) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                    if (night) "Day" else "Night",
-                    tint = RoomYellow, modifier = Modifier.size(22.dp)
-                )
+                Crossfade(targetState = night, animationSpec = tween(300), label = "dayNightIcon") { n ->
+                    Icon(
+                        if (n) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                        if (n) "Day" else "Night",
+                        tint = RoomYellow, modifier = Modifier.size(22.dp)
+                    )
+                }
             }
             Spacer(Modifier.height(2.dp))
             Text(
@@ -1514,6 +1620,10 @@ fun MiniPlayerBox(
     }
     var index by remember { mutableStateOf(startIndex) }
     var isPlaying by remember { mutableStateOf(true) }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
+    }
 
     fun saveNow() {
         val v = queue.getOrNull(exo.currentMediaItemIndex) ?: return
@@ -1549,6 +1659,7 @@ fun MiniPlayerBox(
         val density = LocalDensity.current
         val maxWPx = with(density) { maxWidth.toPx() }
         val maxHPx = with(density) { maxHeight.toPx() }
+        val maxWDpLocal = maxWidth
         var widthDp by remember { mutableStateOf(216.dp) }
         var offX by remember { mutableStateOf<Float?>(null) }
         var offY by remember { mutableStateOf<Float?>(null) }
@@ -1566,6 +1677,12 @@ fun MiniPlayerBox(
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF10131A))
                 .border(2.dp, RoomOrange, RoundedCornerShape(12.dp))
+                .graphicsLayer {
+                    val a = appear.value
+                    scaleX = 0.7f + 0.3f * a
+                    scaleY = 0.7f + 0.3f * a
+                    alpha = a
+                }
         ) {
             Box(
                 Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)
@@ -1596,7 +1713,7 @@ fun MiniPlayerBox(
                             detectDragGestures { change, drag ->
                                 change.consume()
                                 widthDp = (widthDp + with(density) { drag.x.toDp() })
-                                    .coerceIn(140.dp, maxWidth - 8.dp)
+                                    .coerceIn(140.dp, maxWDpLocal - 8.dp)
                             }
                         },
                     contentAlignment = Alignment.Center
