@@ -1505,7 +1505,10 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
     // The Plaza ring's pink reads hotter than the other colors at the
     // same alpha — its glow is dimmed a touch so all the rings pulse
     // at the same felt strength (May, 2026-11-10).
-    val glowAlpha = (0.16f + 0.30f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
+    // Strengthened at her word (2026-11-10): the pulse now covers
+    // the whole icon — full strength held out to the ring's edge —
+    // and swings a little deeper so it reads clearly.
+    val glowAlpha = (0.22f + 0.38f * pulse) * if (spot.label == "Plaza") 0.7f else 1f
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1525,10 +1528,11 @@ fun RoomChip(spot: Hotspot, art: Bitmap?, imgWpx: Int, index: Int, tapped: Boole
                     .clip(CircleShape)
                     .background(
                         androidx.compose.ui.graphics.Brush.radialGradient(
-                            listOf(
-                                color.copy(alpha = glowAlpha),
-                                color.copy(alpha = glowAlpha * 0.45f),
-                                Color.Transparent
+                            colorStops = arrayOf(
+                                0f to color.copy(alpha = glowAlpha),
+                                0.66f to color.copy(alpha = glowAlpha),
+                                0.85f to color.copy(alpha = glowAlpha * 0.4f),
+                                1f to Color.Transparent
                             )
                         )
                     )
