@@ -1963,7 +1963,7 @@ fun DoorIntro(onDone: () -> Unit) {
                 fontSize = 17.sp
             )
             Text(
-                "App is best used in portrait orientation",
+                "App interface is best used in portrait orientation",
                 fontFamily = HandwrittenFont,
                 color = Color(0xFFFFF3E0).copy(alpha = 0.6f),
                 fontSize = 13.5.sp
@@ -2036,7 +2036,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
     val wideDaySpots = listOf(
         Hotspot(0.124f, 0.501f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.40f, 0.360f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.130f, 0.260f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.152f, 0.260f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.650f, 0.400f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
         Hotspot(0.548f, 0.518f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
@@ -2047,7 +2047,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.370f, 0.415f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
-        Hotspot(0.120f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
+        Hotspot(0.142f, 0.335f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.678f, 0.412f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
         Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
