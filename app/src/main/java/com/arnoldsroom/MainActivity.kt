@@ -1047,6 +1047,16 @@ fun ArnoldsRoomApp() {
     val activity = context as? Activity
     LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
+        // The room paints to the very bottom edge (May, 2026-11-10):
+        // the navigation bar goes fully transparent — no black band
+        // under the room and no contrast scrim — so the painting
+        // shows through the bar's zone and only the pill or buttons
+        // float over it. The room's credits and clock sit down in
+        // that zone now.
+        act.window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            act.window.isNavigationBarContrastEnforced = false
+        }
         val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
@@ -2074,6 +2084,11 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
             if (winAspect in 0.40f..0.42f) 30.dp else 12.dp,
             navBarInsetDp() + 4.dp
         )
+        // The credits and the clock/battery sit at the VERY bottom
+        // now (May, 2026-11-10), down in the transparent bar zone on
+        // the painting itself. The "Tap something" hint keeps the
+        // lifted bottomTextPad spot it already had.
+        val bottomEdgePad = 5.dp
         // One spot set per screen shape: the day and night paintings share the
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
@@ -2197,7 +2212,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         }
         if (!dimmed) {
         Row(
-            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = bottomTextPad),
+            Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = bottomEdgePad),
             verticalAlignment = Alignment.Bottom
         ) {
             // The AM/PM renders smaller than the digits — at full size
@@ -2236,7 +2251,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
             color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
             fontSize = 15.sp,
             textAlign = TextAlign.End,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = bottomTextPad)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = bottomEdgePad)
         )
         }
         if (!dimmed) {
