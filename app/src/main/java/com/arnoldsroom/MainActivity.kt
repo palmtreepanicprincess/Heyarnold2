@@ -162,6 +162,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -790,11 +791,23 @@ object RoomNightState {
     var phase by mutableStateOf(DayPhase.DAY)
 }
 
+// Her legibility option (May, 2026-11-10): a Settings switch that
+// makes the see-through backgrounds — the menus' view of the room
+// and the video player's control layers — a little more solid so
+// text is easier to read. Off is exactly how the app already
+// looks, and she can flip it either way at will. Persisted in
+// prefs as "solid_bg", loaded by the root at startup.
+object SolidBgState {
+    var on by mutableStateOf(false)
+}
+
 // ---------- App root ----------
 @Composable
 fun ArnoldsRoomApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
+    // Her saved solid-backgrounds choice (see SolidBgState).
+    remember { SolidBgState.on = prefs.getBoolean("solid_bg", false) }
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
     // A real back stack (May, 2026-11-10): Android's back button
     // used to dump her straight back at the room from everywhere —
@@ -1153,11 +1166,20 @@ fun ArnoldsRoomApp() {
             // menu instead, so returning to the room found the
             // radio gone (May, 2026-11-10).
             showRadio && screen is Screen.Room -> showRadio = false
+            // The music player always backs into the music library
+            // (May, 2026-11-10): expanded from the cassette pop-up,
+            // the stack underneath holds only the Room, and popping
+            // it threw her straight out to the room instead of back
+            // to Artists and Albums. Whatever is under the library
+            // stays under it, so the next Back still reaches home.
+            screen is Screen.MusicPlayer -> {
+                backStack = backStack.dropLastWhile { it is Screen.MusicLibrary }
+                screen = Screen.MusicLibrary
+            }
             backStack.isNotEmpty() -> {
                 screen = backStack.last()
                 backStack = backStack.dropLast(1)
             }
-            screen is Screen.MusicPlayer -> screen = Screen.MusicLibrary
             else -> navTo(Screen.Room)
         }
     }
@@ -1343,6 +1365,11 @@ fun ArnoldsRoomApp() {
                 videoCount = videos.size,
                 granted = granted,
                 onGrant = { launcher.launch(videoPermission()) },
+                solidBg = SolidBgState.on,
+                onToggleSolidBg = { v ->
+                    SolidBgState.on = v
+                    prefs.edit().putBoolean("solid_bg", v).apply()
+                },
                 onClearResume = {
                     val ed = prefs.edit()
                     videos.forEach { ed.remove("pos_${it.id}") }
@@ -2469,7 +2496,7 @@ fun RoomBackdrop() {
         // like a different app (continuity pass, May, 2026-11-10).
         // At 0.72 the room reads through everything — the cards on
         // top are opaque, so nothing gets harder to read.
-        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = 0.72f)))
+        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = if (SolidBgState.on) 0.86f else 0.72f)))
     }
 }
 
@@ -3178,6 +3205,8 @@ fun SettingsScreen(
     videoCount: Int,
     granted: Boolean,
     onGrant: () -> Unit,
+    solidBg: Boolean,
+    onToggleSolidBg: (Boolean) -> Unit,
     onClearResume: () -> Unit,
     onRoom: () -> Unit,
     onBack: () -> Unit
@@ -3191,6 +3220,23 @@ fun SettingsScreen(
                         .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp)
                 ) {
                     Text("$videoCount videos found on this phone.", color = Color.White, fontSize = 16.sp)
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Solid backgrounds", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Makes the see-through backgrounds behind the menus and the players a little more solid, so text is easier to read. Off is exactly how it looks now.",
+                            color = RoomTextDim, fontSize = 12.5.sp
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Switch(checked = solidBg, onCheckedChange = onToggleSolidBg)
                 }
             }
             if (!granted) item {
@@ -3788,7 +3834,7 @@ fun PlayerScreen(
                 }
             )
             if (showControls && !locked && !PipControl.inPip) {
-                Column(Modifier.fillMaxSize().background(Color(0x66000000))) {
+                Column(Modifier.fillMaxSize().background(Color(if (SolidBgState.on) 0x99000000 else 0x66000000))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
@@ -3864,7 +3910,7 @@ fun PlayerScreen(
                     if (showMarks && marks.isNotEmpty()) {
                         Column(
                             Modifier.padding(start = 12.dp, top = 8.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(Color(0xE61D2130))
+                                .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on) Color(0xFF1D2130) else Color(0xE61D2130))
                                 .padding(10.dp)
                         ) {
                             Text("Favorite moments", color = RoomYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -3932,7 +3978,7 @@ fun PlayerScreen(
                 Text(
                     gestureMsg!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 58.dp)
-                        .clip(RoundedCornerShape(10.dp)).background(Color(0xB310131A))
+                        .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A))
                         .padding(horizontal = 14.dp, vertical = 7.dp)
                 )
             }
@@ -3941,7 +3987,7 @@ fun PlayerScreen(
             if (!locked && nextVideo != null && duration > 0 && remainingMs in 1..15_000) {
                 Row(
                     Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 86.dp)
-                        .clip(RoundedCornerShape(12.dp)).background(Color(0xE61D2130))
+                        .clip(RoundedCornerShape(12.dp)).background(if (SolidBgState.on) Color(0xFF1D2130) else Color(0xE61D2130))
                         .clickable { goToItem(index + 1) }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -4198,10 +4244,34 @@ Icon(
                                     .background(Color(0xFFFF6EC7))
                             )
                         }
-                        Text(
-                            "FM · plaza.one — vaporwave, all day",
-                            color = Color(0xFF10131A).copy(alpha = 0.7f), fontSize = 9.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "FM · plaza.one — vaporwave, all day",
+                                color = Color(0xFF10131A).copy(alpha = 0.7f), fontSize = 9.sp,
+                                modifier = Modifier.weight(1f), maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            // The stream status lives on the dial
+                            // glass now (May, 2026-11-10): down in
+                            // the knobs row it only had a sliver of
+                            // width, so "Connecting…" wrapped and
+                            // chopped whenever the box was small.
+                            // The plate runs the full width, so the
+                            // whole word always fits.
+                            Text(
+                                when {
+                                    buffering -> "Connecting…"
+                                    playing -> "LIVE"
+                                    else -> "Off"
+                                },
+                                color = when {
+                                    playing -> Color(0xFFD81B60)
+                                    buffering -> Color(0xFF10131A)
+                                    else -> Color(0xFF10131A).copy(alpha = 0.55f)
+                                },
+                                fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -4239,16 +4309,6 @@ Icon(
                         ) { Box(Modifier.width(3.dp).height(10.dp).background(Color(0xFF10131A))) }
                         Text("TUNE", color = Color(0xFFB39DDB), fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        when {
-                            buffering -> "Connecting…"
-                            playing -> "LIVE"
-                            else -> "Off"
-                        },
-                        color = if (playing) Color(0xFFFF6EC7) else Color(0xFFB39DDB),
-                        fontSize = 13.sp, fontWeight = FontWeight.Bold
-                    )
                 }
                 Spacer(Modifier.height(12.dp))
                 // One chunky power key, like pressing a real button.
@@ -4516,7 +4576,7 @@ fun MiniPlayerBox(
                         .padding(3.dp)
                         .size(30.dp)
                         .clip(CircleShape)
-                        .background(Color(0xB310131A))
+                        .background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A))
                         .border(1.5.dp, Color(0xFF10131A), CircleShape)
                         .pointerInput(Unit) {
                             detectTapGestures {
@@ -4924,7 +4984,7 @@ fun MusicLibraryScreen(
             if (bannerM != null) {
                 Image(bannerM.asImageBitmap(), null, contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize(), alignment = Alignment.TopCenter)
-                Box(Modifier.matchParentSize().background(Color(0xB310131A)))
+                Box(Modifier.matchParentSize().background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A)))
             }
             Row(
                 Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
@@ -5372,7 +5432,13 @@ fun MusicPlayerScreen(
         )
     }
     Column(
-        Modifier.fillMaxSize().background(RoomDark).padding(16.dp),
+        // Not the room, but not a flat void either (May,
+        // 2026-11-10): a deep violet dusk behind the music side's
+        // screen, fading down into the app's dark — the colors the
+        // cassette and the disc already wear.
+        Modifier.fillMaxSize().background(
+            Brush.verticalGradient(listOf(Color(0xFF2B1E4D), Color(0xFF1A142E), RoomDark))
+        ).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -5385,6 +5451,13 @@ fun MusicPlayerScreen(
                 Icon(Icons.Filled.PictureInPictureAlt, "Pop-up player", tint = MusicAccent)
             }
         }
+        Box(
+            Modifier.fillMaxWidth().height(2.dp).background(
+                Brush.horizontalGradient(
+                    listOf(Color.Transparent, MusicAccent.copy(alpha = 0.5f), Color.Transparent)
+                )
+            )
+        )
         if (song == null) {
             Spacer(Modifier.height(40.dp))
             Text("Nothing playing — pick a song from the library.", color = RoomTextDim, fontSize = 15.sp)
@@ -5396,7 +5469,9 @@ fun MusicPlayerScreen(
         // position itself, so no separate animation state can drift.
         val angle = (MusicState.positionMs / 1000f * 30f) % 360f
         Box(
-            Modifier.size(238.dp).shadow(12.dp, CircleShape).clip(CircleShape)
+            Modifier.size(238.dp)
+                .shadow(30.dp, CircleShape, ambientColor = MusicAccent.copy(alpha = 0.35f), spotColor = MusicAccent.copy(alpha = 0.55f))
+                .clip(CircleShape)
                 .background(Color(0xFF1A2118))
                 .border(3.dp, MusicAccent, CircleShape),
             contentAlignment = Alignment.Center
