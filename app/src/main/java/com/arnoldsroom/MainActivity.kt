@@ -800,6 +800,12 @@ object RoomNightState {
 // prefs as "solid_bg", loaded by the root at startup.
 object SolidBgState {
     var on by mutableStateOf(false)
+    // The second switch (May, 2026-11-10): totally solid — the
+    // same surfaces at full opacity, nothing showing through at
+    // all, for anyone who wants the plainest look. The first
+    // switch stays exactly as it was; this one wins where both
+    // could apply. Persisted as "solid_bg_full".
+    var full by mutableStateOf(false)
 }
 
 // ---------- App root ----------
@@ -809,6 +815,7 @@ fun ArnoldsRoomApp() {
     val prefs = remember { context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
     // Her saved solid-backgrounds choice (see SolidBgState).
     remember { SolidBgState.on = prefs.getBoolean("solid_bg", false) }
+    remember { SolidBgState.full = prefs.getBoolean("solid_bg_full", false) }
     var screen by remember { mutableStateOf<Screen>(Screen.Room) }
     // A real back stack (May, 2026-11-10): Android's back button
     // used to dump her straight back at the room from everywhere —
@@ -1370,6 +1377,11 @@ fun ArnoldsRoomApp() {
                 onToggleSolidBg = { v ->
                     SolidBgState.on = v
                     prefs.edit().putBoolean("solid_bg", v).apply()
+                },
+                solidFull = SolidBgState.full,
+                onToggleSolidFull = { v ->
+                    SolidBgState.full = v
+                    prefs.edit().putBoolean("solid_bg_full", v).apply()
                 },
                 onClearResume = {
                     val ed = prefs.edit()
@@ -2497,7 +2509,11 @@ fun RoomBackdrop() {
         // like a different app (continuity pass, May, 2026-11-10).
         // At 0.72 the room reads through everything — the cards on
         // top are opaque, so nothing gets harder to read.
-        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = if (SolidBgState.on) 0.86f else 0.72f)))
+        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = when {
+            SolidBgState.full -> 1.0f
+            SolidBgState.on -> 0.86f
+            else -> 0.72f
+        })))
     }
 }
 
@@ -2565,7 +2581,10 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, onBack: () -> Unit, accent: 
                     modifier = Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
             }
             Box(Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(listOf(Color(0xE810131A), Color(0xA610131A)))
+                Brush.horizontalGradient(
+                    if (SolidBgState.full) listOf(Color(0xFF10131A), Color(0xFF10131A))
+                    else listOf(Color(0xE810131A), Color(0xA610131A))
+                )
             ))
             Row(
                 Modifier.fillMaxSize().padding(horizontal = 8.dp),
@@ -3208,6 +3227,8 @@ fun SettingsScreen(
     onGrant: () -> Unit,
     solidBg: Boolean,
     onToggleSolidBg: (Boolean) -> Unit,
+    solidFull: Boolean,
+    onToggleSolidFull: (Boolean) -> Unit,
     onClearResume: () -> Unit,
     onRoom: () -> Unit,
     onBack: () -> Unit
@@ -3238,6 +3259,23 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     Switch(checked = solidBg, onCheckedChange = onToggleSolidBg)
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Totally solid backgrounds", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Makes the backgrounds behind the menus and the players completely solid — nothing shows through at all. The plainest, easiest-to-read look there is.",
+                            color = RoomTextDim, fontSize = 12.5.sp
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Switch(checked = solidFull, onCheckedChange = onToggleSolidFull)
                 }
             }
             if (!granted) item {
@@ -3835,7 +3873,11 @@ fun PlayerScreen(
                 }
             )
             if (showControls && !locked && !PipControl.inPip) {
-                Column(Modifier.fillMaxSize().background(Color(if (SolidBgState.on) 0x99000000 else 0x66000000))) {
+                Column(Modifier.fillMaxSize().background(Color(when {
+                    SolidBgState.full -> 0xFF000000
+                    SolidBgState.on -> 0x99000000
+                    else -> 0x66000000
+                }))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
@@ -3911,7 +3953,7 @@ fun PlayerScreen(
                     if (showMarks && marks.isNotEmpty()) {
                         Column(
                             Modifier.padding(start = 12.dp, top = 8.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on) Color(0xFF1D2130) else Color(0xE61D2130))
+                                .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on || SolidBgState.full) Color(0xFF1D2130) else Color(0xE61D2130))
                                 .padding(10.dp)
                         ) {
                             Text("Favorite moments", color = RoomYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -3979,7 +4021,11 @@ fun PlayerScreen(
                 Text(
                     gestureMsg!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 58.dp)
-                        .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A))
+                        .clip(RoundedCornerShape(10.dp)).background(when {
+                            SolidBgState.full -> Color(0xFF10131A)
+                            SolidBgState.on -> Color(0xE610131A)
+                            else -> Color(0xB310131A)
+                        })
                         .padding(horizontal = 14.dp, vertical = 7.dp)
                 )
             }
@@ -3988,7 +4034,7 @@ fun PlayerScreen(
             if (!locked && nextVideo != null && duration > 0 && remainingMs in 1..15_000) {
                 Row(
                     Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 86.dp)
-                        .clip(RoundedCornerShape(12.dp)).background(if (SolidBgState.on) Color(0xFF1D2130) else Color(0xE61D2130))
+                        .clip(RoundedCornerShape(12.dp)).background(if (SolidBgState.on || SolidBgState.full) Color(0xFF1D2130) else Color(0xE61D2130))
                         .clickable { goToItem(index + 1) }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -4577,7 +4623,11 @@ fun MiniPlayerBox(
                         .padding(3.dp)
                         .size(30.dp)
                         .clip(CircleShape)
-                        .background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A))
+                        .background(when {
+                            SolidBgState.full -> Color(0xFF10131A)
+                            SolidBgState.on -> Color(0xE610131A)
+                            else -> Color(0xB310131A)
+                        })
                         .border(1.5.dp, Color(0xFF10131A), CircleShape)
                         .pointerInput(Unit) {
                             detectTapGestures {
@@ -4985,7 +5035,11 @@ fun MusicLibraryScreen(
             if (bannerM != null) {
                 Image(bannerM.asImageBitmap(), null, contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize(), alignment = Alignment.TopCenter)
-                Box(Modifier.matchParentSize().background(if (SolidBgState.on) Color(0xE610131A) else Color(0xB310131A)))
+                Box(Modifier.matchParentSize().background(when {
+                    SolidBgState.full -> Color(0xFF10131A)
+                    SolidBgState.on -> Color(0xE610131A)
+                    else -> Color(0xB310131A)
+                }))
             }
             Row(
                 Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
