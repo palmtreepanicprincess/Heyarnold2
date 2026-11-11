@@ -2215,7 +2215,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x9910131A))
+                    .background(Color(0xFF10131A))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
