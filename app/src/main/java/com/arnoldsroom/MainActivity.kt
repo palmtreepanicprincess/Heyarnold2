@@ -2203,22 +2203,6 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         if (dimAlpha > 0.01f) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dimAlpha)))
         }
-        AnimatedVisibility(
-            visible = hintVisible && !dimmed,
-            exit = fadeOut(tween(500)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomTextPad + 2.dp)
-        ) {
-            Text(
-                "Tap something in the room",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF10131A))
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            )
-        }
         if (!dimmed) {
         Row(
             Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = bottomEdgePad),
@@ -2262,6 +2246,26 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
             textAlign = TextAlign.End,
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = bottomEdgePad)
         )
+        }
+        // The hint composes after the clock and the credits so it
+        // draws ON TOP of everything else in the room (May,
+        // 2026-11-10): where the bottom texts meet it, they were
+        // covering its edges and fighting its words.
+        AnimatedVisibility(
+            visible = hintVisible && !dimmed,
+            exit = fadeOut(tween(500)),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomTextPad + 2.dp)
+        ) {
+            Text(
+                "Tap something in the room",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF10131A))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
         }
         if (!dimmed) {
         Column(
