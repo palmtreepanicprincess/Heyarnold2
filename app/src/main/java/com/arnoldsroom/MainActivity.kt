@@ -91,6 +91,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -2067,12 +2068,9 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         val maxWDp = maxWidth
         val maxHDp = maxHeight
         val tallMode = maxWDp / maxHDp < 0.62f
-        // Her Razr keeps a black strip (~2%) at the bottom that no
-        // window flag reclaims. On that screen shape (aspect ~0.41,
-        // the Razr's tall display), lift the bottom texts clear of
-        // the strip so it reads as a deliberate frame instead of a
-        // bug — May's suggestion, 2026-11-10. Other screens keep the
-        // snug 12dp.
+        // Razr-shaped screens (aspect ~0.41) get extra lift in the
+        // base pad below; the edge pad then puts the credits and
+        // clock right at the bottom on that shape (May, 2026-11-10).
         val winAspect = maxWDp / maxHDp
         // Lift clear of BOTH flat-bottom traps: the Razr's black
         // strip (the shape rule) and the phone's own navigation
@@ -2137,10 +2135,19 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         // separately; where the fill-zoom truly engaged, like the Razr,
         // the two could disagree and the icons floated off their spots.)
         val drawnWpx = with(LocalDensity.current) { drawnW.roundToPx() }
+        // requiredSize, NOT size (found 2026-11-10, from May's Razr
+        // screenshot): size() gets coerced down to the window when the
+        // zoomed painting is bigger than it, while the offset still
+        // assumes the full drawn rect — so the painting stopped short
+        // of the bottom by half the overflow (2.44% on the Razr, ~9%
+        // on an S25+), leaving a black strip no window flag could fix,
+        // because it was never the window. requiredSize keeps the
+        // container at the true drawn size so it overflows evenly and
+        // covers the screen edge to edge, top AND bottom.
         Box(
             Modifier
                 .offset(x = offX, y = offY)
-                .size(width = drawnW, height = drawnH)
+                .requiredSize(width = drawnW, height = drawnH)
                 .graphicsLayer {
                     scaleX = roomZoom.value
                     scaleY = roomZoom.value
