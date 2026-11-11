@@ -101,6 +101,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -1946,13 +1947,23 @@ fun DoorIntro(onDone: () -> Unit) {
             DoorPanel(knobOnRight = true, toLeft = true, progress = slide.value, nudgePx = nudge.value)
             DoorPanel(knobOnRight = false, toLeft = false, progress = slide.value, nudgePx = nudge.value)
         }
-        Text(
-            "knock twice to come in",
-            fontFamily = HandwrittenFont,
-            color = Color(0xFFFFF3E0).copy(alpha = 0.85f),
-            fontSize = 17.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp)
-        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "knock twice to come in",
+                fontFamily = HandwrittenFont,
+                color = Color(0xFFFFF3E0).copy(alpha = 0.85f),
+                fontSize = 17.sp
+            )
+            Text(
+                "App is best used in portrait orientation",
+                fontFamily = HandwrittenFont,
+                color = Color(0xFFFFF3E0).copy(alpha = 0.6f),
+                fontSize = 13.5.sp
+            )
+        }
     }
 }
 
@@ -2174,7 +2185,14 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         val drawnW = fitW * fillZoom
         val drawnH = fitH * fillZoom
         val offX = (maxWDp - drawnW) / 2
-        val offY = (maxHDp - drawnH) / 2
+        // The crop split used to be even, and on mismatched
+        // screens the room still read as centered low (May,
+        // 2026-11-11) — so the split is biased toward the
+        // painting's center: 35% of the overflow comes off the
+        // top, 65% off the bottom. The lowest hotspot (Music,
+        // center 0.87, ring reaching ~0.90) stays fully on
+        // screen for any overflow up to about 15%.
+        val offY = (maxHDp - drawnH) * 0.35f
         // The corner toggles wear the room too: a crop of the sky behind them,
         // cut one-to-one.
         val cornerFrac = (46f / drawnW.value).coerceIn(0.03f, 0.30f)
@@ -3545,6 +3563,10 @@ fun PlayerScreen(
     var seeking by remember { mutableStateOf(false) }
     var sliderPos by remember { mutableStateOf(0f) }
     var fullscreen by remember { mutableStateOf(false) }
+    // Stretch-to-fill (May, 2026-11-11): in fullscreen the video
+    // can be stretched to the screen's edges, letterbox gone, at
+    // the cost of the picture's own shape. Off = always original.
+    var stretch by remember { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
@@ -3776,6 +3798,9 @@ fun PlayerScreen(
     }
 
     val current = queue.getOrNull(index)
+    val playerCfg = LocalConfiguration.current
+    val screenAspectF = playerCfg.screenWidthDp.toFloat() /
+        playerCfg.screenHeightDp.toFloat().coerceAtLeast(1f)
     val playerBox: @Composable (Modifier) -> Unit = { mod ->
         Box(mod.background(Color.Black)) {
             if (vlcMode) {
@@ -3784,7 +3809,18 @@ fun PlayerScreen(
                         android.view.TextureView(ctx).also { vlcBackup.attach(it) }
                     },
                     onRelease = { vlcBackup.detach() },
-                    modifier = Modifier.fillMaxSize()
+                    // VLC letterboxes inside its texture, so the
+                    // stretch scales the texture itself by the
+                    // aspect mismatch (fullscreen only, like Exo).
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        if (stretch && fullscreen) {
+                            val va = PipControl.aspect
+                            val ca = screenAspectF
+                            if (va > 0f && ca > 0f && va != ca) {
+                                if (va > ca) scaleY = va / ca else scaleX = ca / va
+                            }
+                        }
+                    }
                 )
             } else {
                 AndroidView(
@@ -3795,6 +3831,13 @@ fun PlayerScreen(
                             keepScreenOn = true
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                        }
+                    },
+                    update = { pv ->
+                        pv.resizeMode = if (stretch && fullscreen) {
+                            AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        } else {
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -3925,6 +3968,13 @@ fun PlayerScreen(
                             onShrink(index)
                         }) {
                             Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
+                        }
+                        IconButton(onClick = { stretch = !stretch }) {
+                            Icon(
+                                Icons.Filled.AspectRatio, "Stretch to fill the screen",
+                                tint = if (stretch) RoomYellow else Color.White,
+                                modifier = Modifier.size(21.dp)
+                            )
                         }
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
                             Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
@@ -4074,9 +4124,12 @@ fun PlayerScreen(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
             if (wide) {
-                Row(Modifier.fillMaxSize()) {
-                    playerBox(Modifier.weight(1.6f).fillMaxHeight())
-                    Column(Modifier.width(300.dp).fillMaxHeight().background(RoomCard)) {
+                // Up Next lives at the BOTTOM now, under the video,
+                // on wide screens too (May, 2026-11-11) — it used
+                // to be a column down the right side.
+                Column(Modifier.fillMaxSize()) {
+                    playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    Column(Modifier.fillMaxWidth().weight(1f).background(RoomCard)) {
                         Text("Up next", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(14.dp))
                         LazyColumn(Modifier.fillMaxSize()) {
@@ -5070,6 +5123,11 @@ fun MusicLibraryScreen(
             RoomXButton(onRoom)
             }
         }
+        // Everything under the header rides in a weighted inner
+        // column, so the now-playing strip can sit at the very
+        // bottom of the screen (May, 2026-11-11). The branches'
+        // return@Column calls now return from this inner column.
+        Column(Modifier.weight(1f)) {
         if (!audioGranted) {
             Spacer(Modifier.height(24.dp))
             Text(
@@ -5079,38 +5137,6 @@ fun MusicLibraryScreen(
             Spacer(Modifier.height(12.dp))
             Button(onClick = { permLauncher.launch(audioPermission()) }) { Text("Allow music access") }
             return@Column
-        }
-        if (MusicState.hasMedia && !inDetail) {
-            Spacer(Modifier.height(10.dp))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(MusicAccent.copy(alpha = 0.12f))
-                    .border(1.5.dp, MusicAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                    .clickable { onOpenPlayer() }
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        MusicState.current?.title ?: "Now playing",
-                        color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        if (MusicState.playing) "Playing — tap to open the player" else "Paused — tap to open the player",
-                        color = RoomTextDim, fontSize = 12.sp
-                    )
-                }
-                IconButton(onClick = { musicAction(context, MusicService.ACTION_TOGGLE) }) {
-                    Icon(
-                        if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        if (MusicState.playing) "Pause" else "Play",
-                        tint = MusicAccent
-                    )
-                }
-            }
         }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
@@ -5442,6 +5468,41 @@ fun MusicLibraryScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+        }
+        // The now-playing strip, at the bottom of the screen
+        // (May, 2026-11-11) — it used to sit up under the header.
+        if (MusicState.hasMedia && !inDetail) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(MusicAccent.copy(alpha = 0.12f))
+                    .border(1.5.dp, MusicAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable { onOpenPlayer() }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        MusicState.current?.title ?: "Now playing",
+                        color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        if (MusicState.playing) "Playing — tap to open the player" else "Paused — tap to open the player",
+                        color = RoomTextDim, fontSize = 12.sp
+                    )
+                }
+                IconButton(onClick = { musicAction(context, MusicService.ACTION_TOGGLE) }) {
+                    Icon(
+                        if (MusicState.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        if (MusicState.playing) "Pause" else "Play",
+                        tint = MusicAccent
+                    )
                 }
             }
         }
