@@ -2085,16 +2085,20 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         if (fitH > maxHDp) { fitH = maxHDp; fitW = maxHDp * aspect }
         // Adaptive zoom: the two layouts (wide and tall) stay, but when a
         // screen's shape doesn't match the painting's, pure fit leaves
-        // black bars. Zoom in a little — up to 10% — to fill more of the
-        // screen. The spots are placed from this same rect, and the chips
+        // black bars. So the painting zooms — per phone, by however
+        // much that screen needs — until it fills the whole screen
+        // (May, 2026-11-10: the app is made for her Fold 5 but must
+        // adapt to other phones and tablets; zoom the photo to fit).
+        // The spots are placed from this same rect, and the chips
         // crop from it too, so the buttons always sit exactly on their
-        // things, on any screen.
+        // things, on any screen. The 2x cap only guards absurd
+        // freeform-window shapes; no real phone or tablet nears it.
         val zoomW = maxWDp / fitW
         val zoomH = maxHDp / fitH
-        // Fill means the LARGER ratio: one side already fits exactly, the
-        // other side's zoom is what eats the bars (crops a sliver of the
-        // long side instead). Capped, so it stays "a little" zoom.
-        val fillZoom = (if (zoomW > zoomH) zoomW else zoomH).coerceAtMost(1.10f)
+        // Fill means the LARGER ratio: one side already fits exactly,
+        // the other side's zoom is what eats the bars (crops the long
+        // side of the painting instead).
+        val fillZoom = (if (zoomW > zoomH) zoomW else zoomH).coerceAtMost(2.0f)
         val drawnW = fitW * fillZoom
         val drawnH = fitH * fillZoom
         val offX = (maxWDp - drawnW) / 2
