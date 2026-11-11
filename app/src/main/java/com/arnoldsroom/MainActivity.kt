@@ -1204,6 +1204,18 @@ fun ArnoldsRoomApp() {
                     initialState is Screen.Player || initialState is Screen.MusicPlayer ->
                         fadeIn(tween(260)) togetherWith
                             (slideOutVertically(animationSpec = tween(300)) { h -> h / 3 } + fadeOut(tween(300)))
+                    // Continuity pass (May, 2026-11-10): a menu is a
+                    // place inside the room, not another app — it
+                    // rises up out of the room when you open it and
+                    // sinks back down when you return, and the room
+                    // itself only ever fades, never scales, so it
+                    // feels like the fixed place it is.
+                    initialState is Screen.Room ->
+                        (slideInVertically(animationSpec = tween(300)) { h -> h / 5 } + fadeIn(tween(300))) togetherWith
+                            fadeOut(tween(200))
+                    targetState is Screen.Room ->
+                        fadeIn(tween(280)) togetherWith
+                            (slideOutVertically(animationSpec = tween(280)) { h -> h / 5 } + fadeOut(tween(280)))
                     else ->
                         (fadeIn(tween(240)) + scaleIn(initialScale = 0.985f, animationSpec = tween(240))) togetherWith
                             fadeOut(tween(160))
@@ -1382,7 +1394,12 @@ fun ArnoldsRoomApp() {
             )
             }
         }
-        if (doorGone && screen is Screen.Room) {
+        // The pop-ups ride along (continuity pass, May, 2026-11-10):
+        // the mini TV, the radio and the cassette used to vanish the
+        // moment any menu opened, which threw her out of the room.
+        // Now they follow her through every menu and only step aside
+        // for the two full-screen players.
+        if (doorGone && screen !is Screen.Player && screen !is Screen.MusicPlayer) {
             miniQueue?.let { q ->
                 MiniPlayerBox(
                     queue = q,
@@ -1397,7 +1414,7 @@ fun ArnoldsRoomApp() {
                 )
             }
         }
-        if (screen is Screen.Room && showRadio) {
+        if (screen !is Screen.Player && screen !is Screen.MusicPlayer && showRadio) {
             RadioPlayerBox(
                 playing = radioPlaying,
                 buffering = radioBuffering,
@@ -1405,7 +1422,7 @@ fun ArnoldsRoomApp() {
                 onClose = { showRadio = false }
             )
         }
-        if (MusicState.hasMedia && screen is Screen.Room && doorGone && showMusicMini && !PipControl.inPip) {
+        if (MusicState.hasMedia && screen !is Screen.Player && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
             MusicMiniBox(
                 onExpand = { navTo(Screen.MusicPlayer) },
                 onClose = { showMusicMini = false }
@@ -2448,7 +2465,11 @@ fun RoomBackdrop() {
                 Box(Modifier.fillMaxSize())
             }
         }
-        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = 0.88f)))
+        // 0.88 buried the painting so completely the menus felt
+        // like a different app (continuity pass, May, 2026-11-10).
+        // At 0.72 the room reads through everything — the cards on
+        // top are opaque, so nothing gets harder to read.
+        Box(Modifier.fillMaxSize().background(RoomDark.copy(alpha = 0.72f)))
     }
 }
 
@@ -2473,6 +2494,31 @@ fun RoomXButton(onRoom: () -> Unit) {
             Icon(Icons.Filled.Close, "Back to the room", tint = Color.White, modifier = Modifier.size(22.dp))
         }
         Text("Room", color = Color.White, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// The room's clock follows her into the menus (continuity pass,
+// May, 2026-11-10): the same handwritten Caveat time as the room's
+// own corner, ticking on the same 15 seconds, sitting in every
+// menu's banner — the room's moment is never left behind.
+@Composable
+fun HeaderClock() {
+    var text by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val fmt = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US)
+        while (true) {
+            text = fmt.format(java.util.Date())
+            delay(15_000)
+        }
+    }
+    if (text.isNotEmpty()) {
+        Text(
+            text,
+            fontFamily = HandwrittenFont,
+            color = Color(0xFFFFF3E0).copy(alpha = 0.9f),
+            fontSize = 17.sp,
+            modifier = Modifier.padding(end = 2.dp)
+        )
     }
 }
 
@@ -2501,6 +2547,7 @@ fun ScreenHeader(title: String, onRoom: () -> Unit, onBack: () -> Unit, accent: 
                 Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 right()
+                HeaderClock()
                 RoomXButton(onRoom)
             }
         }
