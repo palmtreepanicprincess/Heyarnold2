@@ -1463,7 +1463,12 @@ fun ArnoldsRoomApp() {
                 onClose = { showRadio = false }
             )
         }
-        if (MusicState.hasMedia && screen !is Screen.Player && screen !is Screen.MusicPlayer && doorGone && showMusicMini && !PipControl.inPip) {
+        // The cassette keeps out of the music screens entirely
+        // (May, 2026-11-11): the full player IS the song, and in
+        // the library the now-playing strip at the bottom does
+        // the same job — the pop-up floating over either is just
+        // the same song twice.
+        if (MusicState.hasMedia && screen !is Screen.Player && screen !is Screen.MusicPlayer && screen !is Screen.MusicLibrary && doorGone && showMusicMini && !PipControl.inPip) {
             MusicMiniBox(
                 onExpand = { navTo(Screen.MusicPlayer) },
                 onClose = { showMusicMini = false }
