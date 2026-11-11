@@ -179,6 +179,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -5431,14 +5432,69 @@ fun MusicPlayerScreen(
             onDismiss = { showNewList = false }
         )
     }
+    // A starry galaxy behind the music (May, 2026-11-10): deep
+    // space, a wash of violet, pink and blue nebula, and a fixed
+    // field of stars — seeded, so the sky never reshuffles between
+    // frames — with a slow twinkle on the bigger ones. It wears
+    // the same violet the whole music side does.
+    val starField = remember {
+        val r = kotlin.random.Random(4242)
+        List(130) {
+            floatArrayOf(
+                r.nextFloat(), r.nextFloat(),
+                0.5f + r.nextFloat() * 1.5f,
+                0.25f + r.nextFloat() * 0.75f,
+                r.nextFloat(),
+                r.nextFloat() * 6.283f
+            )
+        }
+    }
+    val twinkle by rememberInfiniteTransition(label = "twinkle").animateFloat(
+        initialValue = 0f, targetValue = 6.283f,
+        animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing)),
+        label = "twinklePhase"
+    )
     Column(
-        // Not the room, but not a flat void either (May,
-        // 2026-11-10): a deep violet dusk behind the music side's
-        // screen, fading down into the app's dark — the colors the
-        // cassette and the disc already wear.
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF2B1E4D), Color(0xFF1A142E), RoomDark))
-        ).padding(16.dp),
+            Brush.verticalGradient(listOf(Color(0xFF0B0620), Color(0xFF120A2E), Color(0xFF05060F)))
+        ).drawBehind {
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFF7C4DFF).copy(alpha = 0.16f), Color.Transparent)),
+                radius = size.maxDimension * 0.55f,
+                center = Offset(size.width * 0.82f, size.height * 0.16f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFFFF6EC7).copy(alpha = 0.10f), Color.Transparent)),
+                radius = size.maxDimension * 0.45f,
+                center = Offset(size.width * 0.12f, size.height * 0.62f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFF2979FF).copy(alpha = 0.10f), Color.Transparent)),
+                radius = size.maxDimension * 0.5f,
+                center = Offset(size.width * 0.65f, size.height * 0.88f)
+            )
+            starField.forEach { s ->
+                val tint = when {
+                    s[4] < 0.62f -> Color.White
+                    s[4] < 0.78f -> Color(0xFFFFE9C9)
+                    s[4] < 0.90f -> Color(0xFFBFD4FF)
+                    else -> Color(0xFFD9C2FF)
+                }
+                val tw = if (s[2] > 1.5f) 0.72f + 0.28f * kotlin.math.sin(twinkle + s[5]) else 1f
+                if (s[2] > 1.7f) {
+                    drawCircle(
+                        color = tint.copy(alpha = s[3] * tw * 0.18f),
+                        radius = s[2] * density * 3.2f,
+                        center = Offset(s[0] * size.width, s[1] * size.height)
+                    )
+                }
+                drawCircle(
+                    color = tint.copy(alpha = s[3] * tw),
+                    radius = s[2] * density,
+                    center = Offset(s[0] * size.width, s[1] * size.height)
+                )
+            }
+        }.padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
