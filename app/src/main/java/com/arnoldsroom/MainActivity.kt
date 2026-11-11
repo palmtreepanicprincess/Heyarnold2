@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.graphics.drawable.Icon
 import android.content.res.Configuration
 import android.util.Rational
+import android.view.WindowManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -740,6 +741,17 @@ class MainActivity : ComponentActivity() {
         // that no amount of in-app zoom could fill, because the app
         // never got that strip of screen in the first place.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // And draw past the camera cutout, always (May, 2026-11-11):
+        // some phones letterbox the app beside the punch-hole camera
+        // unless the app claims that strip too. ALWAYS where the
+        // system offers it (API 30+), SHORT_EDGES on the way down.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         // The floating window's play/pause button broadcasts here.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val receiver = object : BroadcastReceiver() {
@@ -2052,7 +2064,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         Hotspot(0.558f, 0.530f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
-        Hotspot(0.925f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
+        Hotspot(0.903f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
@@ -5089,7 +5101,17 @@ fun MusicLibraryScreen(
         )
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    // The now-playing strip sits at the very bottom of this screen,
+    // and on phones using the old three-button navigation that bar
+    // is tall enough to crowd it (May, 2026-11-11) — so the whole
+    // screen's bottom padding grows by whatever the button bar
+    // adds beyond a gesture pill's height. Gesture phones (a slim
+    // inset) see no change at all.
+    val navLift = (navBarInsetDp() - 28.dp).coerceAtLeast(0.dp)
+    Column(
+        Modifier.fillMaxSize()
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + navLift)
+    ) {
         val bannerM = rememberRoomBitmapForWindow(RoomNightState.phase)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
