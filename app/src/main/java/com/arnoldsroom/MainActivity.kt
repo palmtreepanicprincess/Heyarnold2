@@ -5557,6 +5557,10 @@ fun MusicPlayerScreen(
             }
             Text("Now Playing", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
+            // The same handwritten clock the menus carry (May,
+            // 2026-11-10): the video side shows the time up top,
+            // and the music player's top bar was missing it.
+            HeaderClock()
             IconButton(onClick = onShrink) {
                 Icon(Icons.Filled.PictureInPictureAlt, "Pop-up player", tint = MusicAccent)
             }
