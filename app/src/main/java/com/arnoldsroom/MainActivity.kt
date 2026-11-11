@@ -2085,10 +2085,12 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
             navBarInsetDp() + 4.dp
         )
         // The credits and the clock/battery sit at the VERY bottom
-        // now (May, 2026-11-10), down in the transparent bar zone on
-        // the painting itself. The "Tap something" hint keeps the
-        // lifted bottomTextPad spot it already had.
-        val bottomEdgePad = 5.dp
+        // on Razr-shaped windows (May, 2026-11-10) — down in the
+        // transparent bar zone on the painting itself, where that
+        // phone's black band was. On her Fold they keep the exact
+        // spot they already had: that view is perfect, don't touch
+        // it. The "Tap something" hint keeps its spot everywhere.
+        val bottomEdgePad = if (winAspect in 0.40f..0.42f) 5.dp else bottomTextPad
         // One spot set per screen shape: the day and night paintings share the
         // same composition, so the buttons must not move when the light changes.
         val activeSpots = if (tallMode) tallSpots else wideDaySpots
