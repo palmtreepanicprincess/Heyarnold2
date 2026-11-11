@@ -101,7 +101,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -3568,10 +3568,11 @@ fun PlayerScreen(
     var seeking by remember { mutableStateOf(false) }
     var sliderPos by remember { mutableStateOf(0f) }
     var fullscreen by remember { mutableStateOf(false) }
-    // Stretch-to-fill (May, 2026-11-11): in fullscreen the video
-    // can be stretched to the screen's edges, letterbox gone, at
-    // the cost of the picture's own shape. Off = always original.
-    var stretch by remember { mutableStateOf(false) }
+    // Zoom-to-fill (May, 2026-11-11, corrected the same day from
+    // stretch): in fullscreen the video zooms until it fills the
+    // screen — letterbox gone, the picture's own shape kept, the
+    // overflow cropped away. Off = the whole picture, letterboxed.
+    var zoomFill by remember { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
@@ -3814,15 +3815,19 @@ fun PlayerScreen(
                         android.view.TextureView(ctx).also { vlcBackup.attach(it) }
                     },
                     onRelease = { vlcBackup.detach() },
-                    // VLC letterboxes inside its texture, so the
-                    // stretch scales the texture itself by the
-                    // aspect mismatch (fullscreen only, like Exo).
+                    // VLC letterboxes inside its texture, so zoom
+                    // scales the texture UNIFORMLY by the aspect
+                    // mismatch — the picture grows past the edges
+                    // and the overflow crops, shape untouched
+                    // (fullscreen only, like Exo).
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        if (stretch && fullscreen) {
+                        if (zoomFill && fullscreen) {
                             val va = PipControl.aspect
                             val ca = screenAspectF
                             if (va > 0f && ca > 0f && va != ca) {
-                                if (va > ca) scaleY = va / ca else scaleX = ca / va
+                                val z = maxOf(va / ca, ca / va)
+                                scaleX = z
+                                scaleY = z
                             }
                         }
                     }
@@ -3839,8 +3844,8 @@ fun PlayerScreen(
                         }
                     },
                     update = { pv ->
-                        pv.resizeMode = if (stretch && fullscreen) {
-                            AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        pv.resizeMode = if (zoomFill && fullscreen) {
+                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         } else {
                             AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
@@ -3974,10 +3979,10 @@ fun PlayerScreen(
                         }) {
                             Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
                         }
-                        IconButton(onClick = { stretch = !stretch }) {
+                        IconButton(onClick = { zoomFill = !zoomFill }) {
                             Icon(
-                                Icons.Filled.AspectRatio, "Stretch to fill the screen",
-                                tint = if (stretch) RoomYellow else Color.White,
+                                Icons.Filled.ZoomIn, "Zoom to fill the screen",
+                                tint = if (zoomFill) RoomYellow else Color.White,
                                 modifier = Modifier.size(21.dp)
                             )
                         }
