@@ -3937,7 +3937,7 @@ fun PlayerScreen(
     val controlsColumn: @Composable (Boolean) -> Unit = { overlayMode ->
             if ((showControls || !overlayMode) && !locked && !PipControl.inPip) {
                 Column((if (overlayMode) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).background(Color(when {
-                    !overlayMode -> 0xFF10131A
+                    !overlayMode -> 0xFF3A1A4A // DIAGNOSTIC (2026-11-12): purple for one build so a screenshot shows exactly which piece paints what; revert to 0xFF10131A once the tall layout is fixed
                     SolidBgState.full -> 0xFF000000
                     SolidBgState.on -> 0x99000000
                     else -> 0x66000000
@@ -4309,6 +4309,15 @@ fun PlayerScreen(
                     // overlaid on the picture they kept landing
                     // slid down and crushed on tall screens, so
                     // they don't overlay here anymore.
+                    // DIAGNOSTIC (2026-11-12, one build): a label
+                    // at the very top of the tall layout + colour-
+                    // coded pieces, so one screenshot shows which
+                    // piece lands where. Remove once fixed.
+                    Text(
+                        "DIAG TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}",
+                        color = Color(0xFFFFEB3B), fontSize = 10.sp,
+                        modifier = Modifier.fillMaxWidth().background(Color(0xFF3A1A4A))
+                    )
                     playerBox(Modifier.fillMaxWidth().height(tallStageH), false)
                     controlsColumn(false)
                     // The list gets the leftover height by weight,
@@ -4318,7 +4327,7 @@ fun PlayerScreen(
                     // with the stage's measurement, and the controls
                     // inside the stage crushed and slid down over
                     // the list (May's screenshots, 2026-11-12).
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).background(Color(0xFF0F2A24))) {
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
