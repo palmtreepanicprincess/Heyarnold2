@@ -4296,6 +4296,14 @@ fun PlayerScreen(
                     // height now comes straight from the screen
                     // width and the video's shape, no guessing.
                     playerBox(Modifier.fillMaxWidth().height(tallStageH))
+                    // The list gets the leftover height by weight,
+                    // inside its own column — the wide layout's
+                    // shape, which behaves. As a direct fillMaxSize
+                    // child of this column the list was tangled up
+                    // with the stage's measurement, and the controls
+                    // inside the stage crushed and slid down over
+                    // the list (May's screenshots, 2026-11-12).
+                    Column(Modifier.weight(1f)) {
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
@@ -4316,6 +4324,7 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
