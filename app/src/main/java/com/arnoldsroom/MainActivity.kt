@@ -3672,19 +3672,6 @@ fun PlayerScreen(
     // overflow cropped away. Off = the whole picture, letterboxed.
     var zoomFill by remember { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
-    // Backing out of the video drops it into the pop-up TV instead
-    // of closing it (May, 2026-11-12): the back arrow and the
-    // system back button both shrink, saving the exact spot first
-    // so the pop-up continues right here — and the pop-up opens
-    // with the video's real shape, handed over now while the full
-    // player still knows it. In fullscreen, back still leaves
-    // fullscreen first (the handler above).
-    fun shrinkToMini() {
-        savePos(index, position)
-        MiniTvState.aspect.value = PipControl.aspect
-        onShrink(index)
-    }
-    BackHandler(enabled = !fullscreen) { shrinkToMini() }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
     var hasCc by remember { mutableStateOf(false) }
@@ -3727,6 +3714,20 @@ fun PlayerScreen(
             ed.apply()
         }
     }
+
+    // Backing out of the video drops it into the pop-up TV instead
+    // of closing it (May, 2026-11-12): the back arrow and the
+    // system back button both shrink, saving the exact spot first
+    // so the pop-up continues right here — and the pop-up opens
+    // with the video's real shape, handed over now while the full
+    // player still knows it. In fullscreen, back still leaves
+    // fullscreen first (the handler by the state declarations).
+    fun shrinkToMini() {
+        savePos(index, position)
+        MiniTvState.aspect.value = PipControl.aspect
+        onShrink(index)
+    }
+    BackHandler(enabled = !fullscreen) { shrinkToMini() }
 
     LaunchedEffect(sleepChoice) {
         if (sleepChoice > 0) {
