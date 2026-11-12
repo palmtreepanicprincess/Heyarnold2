@@ -316,7 +316,7 @@ sealed class Screen {
     object About : Screen()
     object MusicLibrary : Screen()
     object MusicPlayer : Screen()
-    data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String) : Screen()
+    data class Player(val queue: List<VideoItem>, val startIndex: Int, val fromLabel: String, val fromMini: Boolean = false) : Screen()
 }
 
 fun fmtDur(ms: Long): String {
@@ -1456,6 +1456,7 @@ fun ArnoldsRoomApp() {
                 queue = s.queue,
                 startIndex = s.startIndex,
                 fromLabel = s.fromLabel,
+                fromMini = s.fromMini,
                 prefs = prefs,
                 onBack = { navigateBack() },
                 onShrink = { idx ->
@@ -1480,7 +1481,7 @@ fun ArnoldsRoomApp() {
                     prefs = prefs,
                     onExpand = { idx ->
                         miniQueue = null
-                        navTo(Screen.Player(q, idx, "Mini player"))
+                        navTo(Screen.Player(q, idx, "Mini player", fromMini = true))
                     },
                     onClose = { miniQueue = null },
                     radioPause = radioActive || MusicState.playing
@@ -3612,6 +3613,7 @@ fun PlayerScreen(
     queue: List<VideoItem>,
     startIndex: Int,
     fromLabel: String,
+    fromMini: Boolean,
     prefs: SharedPreferences,
     onBack: () -> Unit,
     onShrink: (Int) -> Unit,
@@ -3721,9 +3723,13 @@ fun PlayerScreen(
     // right here, and the pop-up opens with the video's real shape,
     // handed over now while the full player still knows it. The
     // on-screen back arrow is separate — it goes back to the
-    // previous page, as she asked later the same day. In
-    // fullscreen, back still leaves fullscreen first (the handler
-    // by the state declarations).
+    // previous page, as she asked later the same day. One
+    // exception: a player opened FROM the pop-up (fromMini) sends
+    // its arrow back to the pop-up — expanding closed the pop-up,
+    // so the plain page-back left no video playing at all (her
+    // report, later still the same day). In fullscreen, back
+    // still leaves fullscreen first (the handler by the state
+    // declarations).
     fun shrinkToMini() {
         savePos(index, position)
         MiniTvState.aspect.value = PipControl.aspect
@@ -4046,7 +4052,7 @@ fun PlayerScreen(
                     else -> 0x66000000
                 }))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                        IconButton(onClick = { if (fromMini) shrinkToMini() else onBack() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
                             Text(current?.title ?: "", color = Color.White, fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4730,6 +4736,20 @@ fun MiniPlayerBox(
         val y = (offY ?: with(density) { 96.dp.toPx() })
             .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
 
+        // One move, two handles (May, 2026-11-12): the bottom bar
+        // has always dragged the TV; the antenna strip at the top
+        // drags it too, with the same slide-along-the-neighbors
+        // manners.
+        fun dragTv(drag: Offset) {
+            val curX = offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() })
+            val curY = offY ?: with(density) { 96.dp.toPx() }
+            val d = PopRects.tv?.let { slideDelta(it, drag.x, drag.y, PopRects.others("tv")) } ?: drag
+            offX = (curX + d.x)
+                .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
+            offY = (curY + d.y)
+                .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+        }
+
         Column(
             Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
@@ -4757,8 +4777,21 @@ fun MiniPlayerBox(
                 }
         ) {
             // Rabbit-ear antennae, so the pop-up reads as an old TV in the room.
+            // The strip is a drag handle too (May, 2026-11-12): the
+            // TV can be pulled around by its top as well as by its
+            // bottom bar.
+            Box(
+                Modifier.fillMaxWidth().height(24.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            dragTv(drag)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
             Canvas(
-                Modifier.width(96.dp).height(24.dp).align(Alignment.CenterHorizontally)
+                Modifier.width(96.dp).height(24.dp)
             ) {
                 val swLine = 3.5.dp.toPx()
                 val base = Offset(size.width / 2, size.height)
@@ -4768,6 +4801,7 @@ fun MiniPlayerBox(
                 drawLine(Color(0xFF10131A), base, tipR, strokeWidth = swLine, cap = StrokeCap.Round)
                 drawCircle(Color(0xFF10131A), radius = 4.dp.toPx(), center = tipL)
                 drawCircle(Color(0xFF10131A), radius = 4.dp.toPx(), center = tipR)
+            }
             }
             Box(
                 Modifier.fillMaxWidth().aspectRatio(videoAspect)
@@ -4862,13 +4896,7 @@ fun MiniPlayerBox(
                     .pointerInput(Unit) {
                         detectDragGestures { change, drag ->
                             change.consume()
-                            val curX = offX ?: (maxWPx - widthPx - with(density) { 12.dp.toPx() })
-                            val curY = offY ?: with(density) { 96.dp.toPx() }
-                            val d = PopRects.tv?.let { slideDelta(it, drag.x, drag.y, PopRects.others("tv")) } ?: Offset(drag.x, drag.y)
-                            offX = (curX + d.x)
-                                .coerceIn(0f, (maxWPx - widthPx).coerceAtLeast(0f))
-                            offY = (curY + d.y)
-                                .coerceIn(0f, (maxHPx - heightPx).coerceAtLeast(0f))
+                            dragTv(drag)
                         }
                     }
                     .padding(horizontal = 6.dp),
