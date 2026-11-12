@@ -4815,6 +4815,17 @@ fun MiniPlayerBox(
 // pop-up wore it first, then she had the whole player match it.
 private val MusicAccent = Color(0xFFB388FF)
 
+// The music library's palette (May asked for more color, 2026-11-11):
+// every album, artist, playlist and song row takes one of these by
+// name, so the same name always wears the same color.
+private val MusicPalette = listOf(
+    Color(0xFFB388FF), Color(0xFFFF6EC7), Color(0xFF4DD0E1),
+    Color(0xFF82B1FF), Color(0xFF69F0AE), Color(0xFFFFB74D)
+)
+
+private fun paletteColor(key: String): Color =
+    MusicPalette[(key.hashCode() and Int.MAX_VALUE) % MusicPalette.size]
+
 // Playlists live in prefs (May, 2026-11-10 — created and filled
 // from inside the player itself): "mpl_names" holds the names
 // joined by "|||", and each "mpl_list_<name>" holds that list's
@@ -4933,6 +4944,7 @@ private fun SongRow(
 ) {
     val fav = prefs.getBoolean("music_fav_${s.id}", false)
     val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
+    val rowColor = paletteColor(s.title + s.artist)
     Row(
         Modifier.fillMaxWidth()
             .combinedClickable(onClick = onPlay, onLongClick = onLongPress)
@@ -4942,20 +4954,20 @@ private fun SongRow(
         Box(
             Modifier.size(42.dp).clip(CircleShape)
                 .background(if (isCurrent) MusicAccent.copy(alpha = 0.2f) else Color(0xFF232A33))
-                .border(1.5.dp, if (isCurrent) MusicAccent else Color(0xFF39424E), CircleShape),
+                .border(1.5.dp, if (isCurrent) MusicAccent else rowColor.copy(alpha = 0.55f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             if (trackLabel != null) {
                 Text(
                     trackLabel,
-                    color = if (isCurrent) MusicAccent else RoomTextDim,
+                    color = if (isCurrent) MusicAccent else rowColor,
                     fontSize = if (trackLabel.length > 2) 10.5.sp else 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             } else {
                 Icon(
                     Icons.Filled.MusicNote, null,
-                    tint = if (isCurrent) MusicAccent else RoomTextDim,
+                    tint = if (isCurrent) MusicAccent else rowColor,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -5116,7 +5128,7 @@ fun MusicLibraryScreen(
         val bannerM = rememberRoomBitmapForWindow(RoomNightState.phase)
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                .border(1.5.dp, MusicAccent.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
         ) {
             if (bannerM != null) {
                 Image(bannerM.asImageBitmap(), null, contentScale = ContentScale.Crop,
@@ -5150,7 +5162,7 @@ fun MusicLibraryScreen(
             if (!inDetail) {
                 Text(
                     "${songs.size} songs • ${albums.size} albums • ${artists.size} artists",
-                    color = Color(0xFFC9D4E3), fontSize = 12.sp
+                    color = Color(0xFFD9C2FF), fontSize = 12.sp
                 )
             }
             RoomXButton(onRoom)
@@ -5180,12 +5192,12 @@ fun MusicLibraryScreen(
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MusicAccent,
-                unfocusedBorderColor = Color(0xFF39424E),
+                unfocusedBorderColor = Color(0xFF5E35B1),
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
                 cursorColor = MusicAccent,
-                focusedContainerColor = Color(0xFF232A33),
-                unfocusedContainerColor = Color(0xFF232A33)
+                focusedContainerColor = Color(0xFF2A2138),
+                unfocusedContainerColor = Color(0xFF2A2138)
             ),
             modifier = Modifier.fillMaxWidth()
         )
@@ -5210,7 +5222,7 @@ fun MusicLibraryScreen(
                 Spacer(Modifier.width(10.dp))
                 Button(
                     onClick = { if (artistSongs.isNotEmpty()) onPlaySong(artistSongs.shuffled(), 0) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6EC7), contentColor = Color(0xFF10131A))
                 ) {
                     Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
@@ -5229,11 +5241,11 @@ fun MusicLibraryScreen(
                     ) {
                         Box(
                             Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
-                                .background(Color(0xFF232A33))
+                                .background(paletteColor(name).copy(alpha = 0.22f))
                                 .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.Album, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
                         }
                         Spacer(Modifier.width(11.dp))
                         Column {
@@ -5277,7 +5289,7 @@ fun MusicLibraryScreen(
                 Spacer(Modifier.width(10.dp))
                 Button(
                     onClick = { if (detailSongs.isNotEmpty()) onPlaySong(detailSongs.shuffled(), 0) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6EC7), contentColor = Color(0xFF10131A))
                 ) {
                     Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
@@ -5328,7 +5340,7 @@ fun MusicLibraryScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(
                 onClick = { if (songs.isNotEmpty()) onPlaySong(songs.shuffled(), 0) },
-                colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6EC7), contentColor = Color(0xFF10131A))
             ) {
                 Icon(Icons.Filled.Shuffle, null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
@@ -5341,9 +5353,13 @@ fun MusicLibraryScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             listOf("Songs", "Albums", "Artists", "Favorites", "Playlists").forEachIndexed { i, label ->
+                val chipColor = listOf(
+                    MusicAccent, Color(0xFFFF6EC7), Color(0xFF4DD0E1),
+                    Color(0xFFFFB74D), Color(0xFF69F0AE)
+                )[i]
                 Box(
                     Modifier.clip(RoundedCornerShape(50))
-                        .background(if (tab == i) MusicAccent else Color(0xFF232A33))
+                        .background(if (tab == i) chipColor else Color(0xFF232A33))
                         .border(1.5.dp, if (tab == i) Color(0xFF10131A) else Color(0xFF39424E), RoundedCornerShape(50))
                         .clickable { tab = i }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
@@ -5392,11 +5408,11 @@ fun MusicLibraryScreen(
                         ) {
                             Box(
                                 Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
-                                    .background(Color(0xFF232A33))
+                                    .background(paletteColor(name).copy(alpha = 0.22f))
                                     .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Album, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
                             }
                             Spacer(Modifier.width(11.dp))
                             Column {
@@ -5428,11 +5444,11 @@ fun MusicLibraryScreen(
                         ) {
                             Box(
                                 Modifier.size(46.dp).clip(CircleShape)
-                                    .background(Color(0xFF232A33))
+                                    .background(paletteColor(name).copy(alpha = 0.22f))
                                     .border(1.5.dp, Color(0xFF10131A), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Person, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Filled.Person, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
                             }
                             Spacer(Modifier.width(11.dp))
                             Column {
@@ -5477,11 +5493,11 @@ fun MusicLibraryScreen(
                             ) {
                                 Box(
                                     Modifier.size(46.dp).clip(RoundedCornerShape(9.dp))
-                                        .background(Color(0xFF232A33))
+                                        .background(paletteColor(name).copy(alpha = 0.22f))
                                         .border(1.5.dp, Color(0xFF39424E), RoundedCornerShape(9.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Filled.PlaylistPlay, null, tint = MusicAccent, modifier = Modifier.size(24.dp))
+                                    Icon(Icons.Filled.PlaylistPlay, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
                                 }
                                 Spacer(Modifier.width(11.dp))
                                 Column(Modifier.weight(1f)) {
@@ -5511,7 +5527,7 @@ fun MusicLibraryScreen(
             Spacer(Modifier.height(10.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(MusicAccent.copy(alpha = 0.12f))
+                    .background(Brush.horizontalGradient(listOf(MusicAccent.copy(alpha = 0.30f), Color(0xFFFF6EC7).copy(alpha = 0.30f))))
                     .border(1.5.dp, MusicAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                     .clickable { onOpenPlayer() }
                     .padding(horizontal = 12.dp, vertical = 9.dp),
@@ -5527,7 +5543,7 @@ fun MusicLibraryScreen(
                     )
                     Text(
                         if (MusicState.playing) "Playing — tap to open the player" else "Paused — tap to open the player",
-                        color = RoomTextDim, fontSize = 12.sp
+                        color = Color(0xFFD9C2FF), fontSize = 12.sp
                     )
                 }
                 IconButton(onClick = { musicAction(context, MusicService.ACTION_TOGGLE) }) {
