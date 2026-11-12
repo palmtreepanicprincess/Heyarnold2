@@ -191,6 +191,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -2832,32 +2833,32 @@ fun CategoriesScreen(
         LazyColumn(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tintedCard(Color(0xFF7C4DFF))).border(1.5.dp, Color(0xFF7C4DFF), RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = onShows).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.Tv, null, tint = RoomOrange, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.Tv, null, tint = Color(0xFFB388FF), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("TV Shows — by Folder & Season", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Text("Auto-detected from your folders", color = RoomTextDim, fontSize = 12.sp)
                     }
-                    Text("$showsCount", color = RoomSky, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("$showsCount", color = Color(0xFFB388FF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tintedCard(Color(0xFFFFC107))).border(1.5.dp, Color(0xFFFFC107), RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = onMovieFolders).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.Movie, null, tint = RoomOrange, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.Movie, null, tint = Color(0xFFFFC107), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Movies — by Folder", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Text("Auto-detected from your folders", color = RoomTextDim, fontSize = 12.sp)
                     }
-                    Text("$movieFolderCount", color = RoomSky, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("$movieFolderCount", color = Color(0xFFFFC107), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
             items(Filter.values().toList()) { f ->
@@ -2870,16 +2871,25 @@ fun CategoriesScreen(
                     Filter.UNSORTED -> Icons.Filled.Folder
                     Filter.ALL -> Icons.Filled.Star
                 }
+                val accent = when (f) {
+                    Filter.MOVIES -> Color(0xFFFFC107)
+                    Filter.TV -> Color(0xFF7C4DFF)
+                    Filter.FAVORITES -> Color(0xFFF50057)
+                    Filter.CONTINUE -> Color(0xFF00C853)
+                    Filter.RECENT -> Color(0xFF4DD0E1)
+                    Filter.UNSORTED -> Color(0xFF90A4AE)
+                    Filter.ALL -> Color(0xFF82B1FF)
+                }
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tintedCard(accent)).border(1.5.dp, accent, RoundedCornerShape(14.dp))
                         .combinedClickable(onClick = { onPick(f) }).padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(icon, null, tint = RoomYellow, modifier = Modifier.size(28.dp))
+                    Icon(icon, null, tint = accent, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(14.dp))
                     Text(f.label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f))
-                    Text("${counts[f] ?: 0}", color = RoomSky, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("${counts[f] ?: 0}", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
             item {
@@ -2926,7 +2936,7 @@ fun ShowsScreen(
                     val watchedCount = sh.seasons.values.flatten().count { isWatched(it) }
                     val next = nextEpisode(sh, isWatched, savedPos)
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tintedCard(paletteColor(sh.title))).border(1.5.dp, paletteColor(sh.title), RoundedCornerShape(14.dp))
                             .combinedClickable(onClick = { onPick(sh.title) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -3050,7 +3060,7 @@ fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onR
             ) {
                 items(folders) { mf ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp))
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(tintedCard(paletteColor(mf.title))).border(1.5.dp, paletteColor(mf.title), RoundedCornerShape(14.dp))
                             .combinedClickable(onClick = { onPick(mf.key) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -4873,6 +4883,11 @@ private val MusicPalette = listOf(
 
 private fun paletteColor(key: String): Color =
     MusicPalette[(key.hashCode() and Int.MAX_VALUE) % MusicPalette.size]
+
+// A colored card instead of the plain dark blue (May, 2026-11-12):
+// the card color mixed a third of the way toward the accent —
+// clearly colored, still dark enough for white text.
+fun tintedCard(accent: Color): Color = lerp(RoomCard, accent, 0.35f)
 
 // Playlists live in prefs (May, 2026-11-10 — created and filled
 // from inside the player itself): "mpl_names" holds the names
