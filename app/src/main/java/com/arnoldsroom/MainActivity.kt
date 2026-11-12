@@ -1260,12 +1260,15 @@ fun ArnoldsRoomApp() {
                 // back out, it sinks away. Everything else keeps
                 // the gentle fade-and-grow.
                 when {
+                    // DIAGNOSTIC (2026-11-12, one build): the
+                    // players fade only, no slide — testing whether
+                    // the slide/size transform is what throws the
+                    // tall player layout off. Restore the slide
+                    // once the culprit is known.
                     targetState is Screen.Player || targetState is Screen.MusicPlayer ->
-                        (slideInVertically(animationSpec = tween(320)) { h -> h / 3 } + fadeIn(tween(320))) togetherWith
-                            fadeOut(tween(180))
+                        fadeIn(tween(320)) togetherWith fadeOut(tween(180))
                     initialState is Screen.Player || initialState is Screen.MusicPlayer ->
-                        fadeIn(tween(260)) togetherWith
-                            (slideOutVertically(animationSpec = tween(300)) { h -> h / 3 } + fadeOut(tween(300)))
+                        fadeIn(tween(260)) togetherWith fadeOut(tween(300))
                     // Continuity pass (May, 2026-11-10): a menu is a
                     // place inside the room, not another app — it
                     // rises up out of the room when you open it and
@@ -4275,7 +4278,7 @@ fun PlayerScreen(
             // the layout's Column lambdas maxWidth/maxHeight are
             // not reachable as implicit receivers (that was build
             // 43299056918's compile error).
-            val diagLabel = "DIAG TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
+            val diagLabel = "DIAG2 TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
             if (wide) {
                 // Up Next lives at the BOTTOM now, under the video,
                 // on wide screens too (May, 2026-11-11) — it used
@@ -4332,7 +4335,7 @@ fun PlayerScreen(
                     // with the stage's measurement, and the controls
                     // inside the stage crushed and slid down over
                     // the list (May's screenshots, 2026-11-12).
-                    Column(Modifier.weight(1f).background(Color(0xFF0F2A24))) {
+                    Column(Modifier.fillMaxWidth().height(400.dp).background(Color(0xFF0F2A24))) {
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
