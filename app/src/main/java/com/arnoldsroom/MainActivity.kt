@@ -1260,15 +1260,12 @@ fun ArnoldsRoomApp() {
                 // back out, it sinks away. Everything else keeps
                 // the gentle fade-and-grow.
                 when {
-                    // DIAGNOSTIC (2026-11-12, one build): the
-                    // players fade only, no slide — testing whether
-                    // the slide/size transform is what throws the
-                    // tall player layout off. Restore the slide
-                    // once the culprit is known.
                     targetState is Screen.Player || targetState is Screen.MusicPlayer ->
-                        fadeIn(tween(320)) togetherWith fadeOut(tween(180))
+                        (slideInVertically(animationSpec = tween(320)) { h -> h / 3 } + fadeIn(tween(320))) togetherWith
+                            fadeOut(tween(180))
                     initialState is Screen.Player || initialState is Screen.MusicPlayer ->
-                        fadeIn(tween(260)) togetherWith fadeOut(tween(300))
+                        fadeIn(tween(260)) togetherWith
+                            (slideOutVertically(animationSpec = tween(300)) { h -> h / 3 } + fadeOut(tween(300)))
                     // Continuity pass (May, 2026-11-10): a menu is a
                     // place inside the room, not another app — it
                     // rises up out of the room when you open it and
@@ -3940,17 +3937,11 @@ fun PlayerScreen(
     val controlsColumn: @Composable (Boolean) -> Unit = { overlayMode ->
             if ((showControls || !overlayMode) && !locked && !PipControl.inPip) {
                 Column((if (overlayMode) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(206.dp)).background(Color(when {
-                    !overlayMode -> 0xFF3A1A4A // DIAGNOSTIC (2026-11-12): purple for one build so a screenshot shows exactly which piece paints what; revert to 0xFF10131A once the tall layout is fixed
+                    !overlayMode -> 0xFF10131A
                     SolidBgState.full -> 0xFF000000
                     SolidBgState.on -> 0x99000000
                     else -> 0x66000000
                 })), verticalArrangement = Arrangement.Top) {
-                    // DIAGNOSTIC (2026-11-12, diag3): a bright strip
-                    // as the bar's first child — in the screenshot it
-                    // must sit directly under the video. Overlay mode
-                    // does not draw it. Remove once the tall layout
-                    // is confirmed fixed.
-                    if (!overlayMode) Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0xFF00E676)))
                     Row(Modifier.fillMaxWidth().height(60.dp).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { if (fromMini) shrinkToMini() else onBack() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
@@ -4280,11 +4271,6 @@ fun PlayerScreen(
             // Up Next list keeps its room.
             val tallStageH = (maxWidth / PipControl.aspect.coerceIn(0.5f, 2.39f))
                 .coerceIn(120.dp, (maxHeight * 0.45f).coerceAtLeast(120.dp))
-            // Computed here, in BoxWithConstraints scope: inside
-            // the layout's Column lambdas maxWidth/maxHeight are
-            // not reachable as implicit receivers (that was build
-            // 43299056918's compile error).
-            val diagLabel = "DIAG4 TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
             if (wide) {
                 // Up Next lives at the BOTTOM now, under the video,
                 // on wide screens too (May, 2026-11-11) — it used
@@ -4323,15 +4309,6 @@ fun PlayerScreen(
                     // overlaid on the picture they kept landing
                     // slid down and crushed on tall screens, so
                     // they don't overlay here anymore.
-                    // DIAGNOSTIC (2026-11-12, one build): a label
-                    // at the very top of the tall layout + colour-
-                    // coded pieces, so one screenshot shows which
-                    // piece lands where. Remove once fixed.
-                    Text(
-                        diagLabel,
-                        color = Color(0xFFFFEB3B), fontSize = 10.sp,
-                        modifier = Modifier.fillMaxWidth().background(Color(0xFF3A1A4A))
-                    )
                     playerBox(Modifier.fillMaxWidth().height(tallStageH), false)
                     controlsColumn(false)
                     // The list gets the leftover height by weight,
@@ -4341,7 +4318,7 @@ fun PlayerScreen(
                     // with the stage's measurement, and the controls
                     // inside the stage crushed and slid down over
                     // the list (May's screenshots, 2026-11-12).
-                    Column(Modifier.fillMaxWidth().weight(1f).background(Color(0xFF0F2A24))) {
+                    Column(Modifier.weight(1f)) {
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
