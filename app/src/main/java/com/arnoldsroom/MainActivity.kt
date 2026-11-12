@@ -333,7 +333,9 @@ fun fmtSize(bytes: Long): String {
     return if (mb >= 1000) "%.1f GB".format(mb / 1000.0) else "%.0f MB".format(mb)
 }
 
-private val episodeRegex = Regex("(?i)s\\d{1,2}e\\d{1,2}")
+// Episode codes come in three shapes: S01E01, S01 E01 with a
+// space, and 1x01. All three mean TV.
+private val episodeRegex = Regex("(?i)s\\d{1,2}[\\s._-]*e\\d{1,3}|\\b\\d{1,2}x\\d{2,3}\\b")
 
 fun heuristicCat(v: VideoItem): AssignCat {
     val f = v.folder.lowercase()
@@ -368,6 +370,7 @@ fun isJunkClip(v: VideoItem): Boolean {
 private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s._-]*(\\d{1,2})\\b.*$|^s(\\d{1,2})$")
 private val specialsSegRegex = Regex("(?i)^specials?\\b.*$")
 private val epCodeRegex = Regex("(?i)s(\\d{1,2})[\\s._-]*e(\\d{1,3})")
+private val xCodeRegex = Regex("(?i)\\b(\\d{1,2})x(\\d{2,3})\\b")
 private val genericSegs = setOf(
     "movies", "movie", "films", "film", "cinema", "tv", "tv shows", "shows", "series",
     "download", "downloads", "video", "videos", "media", "storage", "emulated", "0",
@@ -415,11 +418,13 @@ fun showTitleOf(v: VideoItem): String {
 fun seasonOf(v: VideoItem): Int {
     for (s in pathSegments(v)) seasonOfSegment(s)?.let { return it }
     epCodeRegex.find(v.name)?.let { return it.groupValues[1].toIntOrNull() ?: 1 }
+    xCodeRegex.find(v.name)?.let { return it.groupValues[1].toIntOrNull() ?: 1 }
     return 1
 }
 
 fun episodeKey(v: VideoItem): Int {
     epCodeRegex.find(v.name)?.let { return it.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE }
+    xCodeRegex.find(v.name)?.let { return it.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE }
     val nums = Regex("\\d+").findAll(v.title).mapNotNull { it.value.toIntOrNull() }.toList()
     return nums.lastOrNull() ?: Int.MAX_VALUE
 }
