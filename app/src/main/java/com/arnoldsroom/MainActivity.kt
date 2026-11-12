@@ -3965,7 +3965,7 @@ fun PlayerScreen(
                             IconButton(onClick = { ccOn = !ccOn }) {
                                 Icon(
                                     if (ccOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
-                                    "Captions", tint = if (ccOn) RoomYellow else Color.White,
+                                    "Captions", tint = if (ccOn) RoomYellow else Color(0xFF4DD0E1),
                                     modifier = Modifier.size(21.dp)
                                 )
                             }
@@ -3975,7 +3975,7 @@ fun PlayerScreen(
                             if (!marks.contains(t)) saveMarks((marks + t).sorted())
                             showMarks = true
                         }) {
-                            Icon(Icons.Filled.BookmarkAdd, "Save this moment", tint = Color.White, modifier = Modifier.size(21.dp))
+                            Icon(Icons.Filled.BookmarkAdd, "Save this moment", tint = Color(0xFF00C853), modifier = Modifier.size(21.dp))
                         }
                         if (marks.isNotEmpty()) {
                             IconButton(onClick = { showMarks = !showMarks }) {
@@ -3989,7 +3989,7 @@ fun PlayerScreen(
                             savePos(index, position)
                             onShrink(index)
                         }) {
-                            Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color.White)
+                            Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color(0xFF82B1FF))
                         }
                         IconButton(onClick = { zoomFill = !zoomFill }) {
                             Icon(
@@ -4000,10 +4000,10 @@ fun PlayerScreen(
                         }
                         IconButton(onClick = { applyFullscreen(!fullscreen) }) {
                             Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                "Fullscreen", tint = Color.White)
+                                "Fullscreen", tint = Color(0xFFFF7043))
                         }
                         IconButton(onClick = { locked = true; showControls = false }) {
-                            Icon(Icons.Filled.LockOpen, "Lock controls", tint = Color.White)
+                            Icon(Icons.Filled.LockOpen, "Lock controls", tint = Color(0xFFFF5252))
                         }
                     }
                     if (playerError != null) {
@@ -4053,18 +4053,19 @@ fun PlayerScreen(
                         }
                         IconButton(onClick = { seekAny((position - 10_000).coerceAtLeast(0)) },
                             modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color.White, modifier = Modifier.size(30.dp))
+                            Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
                         }
                         IconButton(
                             onClick = { hushed = false; if (isPlaying) pauseAny() else playAny() },
-                            modifier = Modifier.size(68.dp).clip(CircleShape).background(RoomOrange)
+                            modifier = Modifier.size(68.dp).clip(CircleShape)
+                                .background(Brush.linearGradient(listOf(Color(0xFFF26D21), Color(0xFFFF6EC7))))
                         ) {
                             Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 "Play or pause", tint = Color.White, modifier = Modifier.size(38.dp))
                         }
                         IconButton(onClick = { seekAny(position + 10_000) },
                             modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = Color.White, modifier = Modifier.size(30.dp))
+                            Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
                         }
                         IconButton(onClick = { goToItem(index + 1) },
                             modifier = Modifier.size(52.dp)) {
@@ -5603,22 +5604,27 @@ fun MusicPlayerScreen(
     )
     Column(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF0B0620), Color(0xFF120A2E), Color(0xFF05060F)))
+            Brush.verticalGradient(listOf(Color(0xFF0D0724), Color(0xFF1D0E47), Color(0xFF070313)))
         ).drawBehind {
             drawCircle(
-                brush = Brush.radialGradient(listOf(Color(0xFF7C4DFF).copy(alpha = 0.16f), Color.Transparent)),
+                brush = Brush.radialGradient(listOf(Color(0xFF7C4DFF).copy(alpha = 0.27f), Color.Transparent)),
                 radius = size.maxDimension * 0.55f,
                 center = Offset(size.width * 0.82f, size.height * 0.16f)
             )
             drawCircle(
-                brush = Brush.radialGradient(listOf(Color(0xFFFF6EC7).copy(alpha = 0.10f), Color.Transparent)),
+                brush = Brush.radialGradient(listOf(Color(0xFFFF6EC7).copy(alpha = 0.20f), Color.Transparent)),
                 radius = size.maxDimension * 0.45f,
                 center = Offset(size.width * 0.12f, size.height * 0.62f)
             )
             drawCircle(
-                brush = Brush.radialGradient(listOf(Color(0xFF2979FF).copy(alpha = 0.10f), Color.Transparent)),
+                brush = Brush.radialGradient(listOf(Color(0xFF2979FF).copy(alpha = 0.19f), Color.Transparent)),
                 radius = size.maxDimension * 0.5f,
                 center = Offset(size.width * 0.65f, size.height * 0.88f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFF00BCD4).copy(alpha = 0.13f), Color.Transparent)),
+                radius = size.maxDimension * 0.42f,
+                center = Offset(size.width * 0.34f, size.height * 0.30f)
             )
             starField.forEach { s ->
                 val tint = when {
@@ -5679,13 +5685,13 @@ fun MusicPlayerScreen(
             Modifier.size(238.dp)
                 .shadow(30.dp, CircleShape, ambientColor = MusicAccent.copy(alpha = 0.35f), spotColor = MusicAccent.copy(alpha = 0.55f))
                 .clip(CircleShape)
-                .background(Color(0xFF1A2118))
+                .background(Brush.radialGradient(listOf(Color(0xFF33205E), Color(0xFF140B2C))))
                 .border(3.dp, MusicAccent, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 Modifier.size(196.dp).clip(CircleShape)
-                    .border(1.5.dp, MusicAccent.copy(alpha = 0.35f), CircleShape)
+                    .border(1.5.dp, Color(0xFFFF6EC7).copy(alpha = 0.55f), CircleShape)
             )
             Icon(
                 Icons.Filled.MusicNote, null, tint = MusicAccent,
@@ -5701,7 +5707,7 @@ fun MusicPlayerScreen(
             song.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold,
             maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
         )
-        Text(song.artist, color = RoomTextDim, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(song.artist, color = MusicAccent.copy(alpha = 0.9f), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
         val dur = if (MusicState.durationMs > 0) MusicState.durationMs else song.durationMs
         Slider(
@@ -5712,6 +5718,11 @@ fun MusicPlayerScreen(
                 scrub = null
             },
             valueRange = 0f..(dur.toFloat().coerceAtLeast(1f)),
+            colors = SliderDefaults.colors(
+                thumbColor = MusicAccent,
+                activeTrackColor = MusicAccent,
+                inactiveTrackColor = MusicAccent.copy(alpha = 0.3f)
+            ),
             modifier = Modifier.fillMaxWidth()
         )
         Row(Modifier.fillMaxWidth()) {
@@ -5738,11 +5749,11 @@ fun MusicPlayerScreen(
                 val p = (MusicState.positionMs - 10_000).coerceAtLeast(0L)
                 musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, p) }
             }) {
-                Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color.White)
+                Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = Color(0xFF82B1FF))
             }
             Box(
                 Modifier.size(66.dp).shadow(6.dp, CircleShape).clip(CircleShape)
-                    .background(MusicAccent)
+                    .background(Brush.linearGradient(listOf(Color(0xFFB388FF), Color(0xFFFF6EC7))))
                     .clickable { musicAction(context, MusicService.ACTION_TOGGLE) },
                 contentAlignment = Alignment.Center
             ) {
@@ -5756,7 +5767,7 @@ fun MusicPlayerScreen(
                 val p = MusicState.positionMs + 10_000
                 musicAction(context, MusicService.ACTION_SEEK) { putExtra(MusicService.EXTRA_POS, p) }
             }) {
-                Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = Color.White)
+                Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = Color(0xFF82B1FF))
             }
             IconButton(onClick = { musicAction(context, MusicService.ACTION_NEXT) }) {
                 Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(32.dp))
@@ -5779,18 +5790,18 @@ fun MusicPlayerScreen(
                 val next = speeds.firstOrNull { it > MusicState.speed } ?: speeds.first()
                 musicAction(context, MusicService.ACTION_SET_SPEED) { putExtra(MusicService.EXTRA_FLOAT, next) }
             }) {
-                Text("Speed ${MusicState.speed}×", color = RoomTextDim, fontWeight = FontWeight.Bold)
+                Text("Speed ${MusicState.speed}×", color = Color(0xFF82B1FF), fontWeight = FontWeight.Bold)
             }
             TextButton(onClick = {
                 val opts = listOf(0, 15, 30, 45, 60)
                 val next = opts.firstOrNull { it > MusicState.sleepMinutes } ?: 0
                 musicAction(context, MusicService.ACTION_SET_SLEEP) { putExtra(MusicService.EXTRA_INT, next) }
             }) {
-                Icon(Icons.Filled.Bedtime, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.Bedtime, null, tint = Color(0xFF7C4DFF), modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(5.dp))
                 Text(
                     if (MusicState.sleepMinutes > 0) "Sleep ${MusicState.sleepMinutes}m" else "Sleep off",
-                    color = RoomTextDim, fontWeight = FontWeight.Bold
+                    color = Color(0xFF7C4DFF), fontWeight = FontWeight.Bold
                 )
             }
             TextButton(onClick = {
@@ -5800,16 +5811,16 @@ fun MusicPlayerScreen(
                 prefs.edit().putString(key, updated.joinToString(",")).apply()
                 markTick++
             }) {
-                Icon(Icons.Filled.BookmarkAdd, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.BookmarkAdd, null, tint = Color(0xFF00C853), modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("Mark this spot", color = RoomTextDim, fontWeight = FontWeight.Bold)
+                Text("Mark this spot", color = Color(0xFF00C853), fontWeight = FontWeight.Bold)
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { showAddTo = true }) {
-                Icon(Icons.Filled.PlaylistAdd, null, tint = RoomTextDim, modifier = Modifier.size(17.dp))
+                Icon(Icons.Filled.PlaylistAdd, null, tint = Color(0xFFFF6EC7), modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("Add to playlist", color = RoomTextDim, fontWeight = FontWeight.Bold)
+                Text("Add to playlist", color = Color(0xFFFF6EC7), fontWeight = FontWeight.Bold)
             }
         }
         val hasMarks = (prefs.getString("mmarks_${song.id}", "") ?: "").isNotBlank()
