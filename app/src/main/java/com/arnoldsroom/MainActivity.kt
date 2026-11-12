@@ -2076,9 +2076,9 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         Hotspot(0.370f, 0.415f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
         Hotspot(0.142f, 0.357f, "Plaza", Icons.Filled.Radio, null, Color(0xFFFF6EC7)),
         Hotspot(0.613f, 0.416f, "Hey Arnold", Icons.Filled.Tv, Screen.About, Color(0xFFFF5722)),
-        Hotspot(0.536f, 0.486f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
+        Hotspot(0.524f, 0.498f, "Continue", Icons.Filled.PlayCircleFilled, Screen.Library(Filter.CONTINUE), Color(0xFF00C853)),
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
-        Hotspot(0.774f, 0.576f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
+        Hotspot(0.786f, 0.564f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.903f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF)),
         Hotspot(0.700f, 0.328f, "Lights", Icons.Filled.Lightbulb, null, Color(0xFFFFC107))
