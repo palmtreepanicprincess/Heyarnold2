@@ -364,8 +364,9 @@ fun isJunkClip(v: VideoItem): Boolean {
 }
 
 // ---------- Folder auto-detection: shows, seasons, movie folders ----------
-private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s_]*(\\d{1,2})$|^s(\\d{1,2})$")
-private val epCodeRegex = Regex("(?i)s(\\d{1,2})e(\\d{1,3})")
+private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s._-]*(\\d{1,2})\\b.*$|^s(\\d{1,2})$")
+private val specialsSegRegex = Regex("(?i)^specials?\\b.*$")
+private val epCodeRegex = Regex("(?i)s(\\d{1,2})[\\s._-]*e(\\d{1,3})")
 private val genericSegs = setOf(
     "movies", "movie", "films", "film", "cinema", "tv", "tv shows", "shows", "series",
     "download", "downloads", "video", "videos", "media", "storage", "emulated", "0",
@@ -384,10 +385,15 @@ fun cleanTitle(raw: String): String {
 fun pathSegments(v: VideoItem): List<String> =
     v.relPath.split('/').map { it.trim() }.filter { it.isNotEmpty() }
 
-fun seasonOfSegment(seg: String): Int? =
-    seasonSegRegex.find(seg.trim())?.let { m ->
+fun seasonOfSegment(seg: String): Int? {
+    val t = seg.trim()
+    // "Specials" folders are season 0 — the files inside them are
+    // already numbered that way (S00E01).
+    if (specialsSegRegex.containsMatchIn(t)) return 0
+    return seasonSegRegex.find(t)?.let { m ->
         (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
     }
+}
 
 fun showTitleOf(v: VideoItem): String {
     val segs = pathSegments(v)
