@@ -3927,7 +3927,164 @@ fun PlayerScreen(
     val playerCfg = LocalConfiguration.current
     val screenAspectF = playerCfg.screenWidthDp.toFloat() /
         playerCfg.screenHeightDp.toFloat().coerceAtLeast(1f)
-    val playerBox: @Composable (Modifier) -> Unit = { mod ->
+    // The video controls, in two homes (May, 2026-11-12):
+    // overlaid on the picture for fullscreen, wide screens and
+    // PiP — the original design — and, on tall screens, in their
+    // own solid bar UNDER the video, always visible. Overlaid on
+    // a tall screen's stage they kept landing slid down and
+    // crushed through three attempts; under the video there is
+    // nothing for them to fight with.
+    val controlsColumn: @Composable (Boolean) -> Unit = { overlayMode ->
+            if ((showControls || !overlayMode) && !locked && !PipControl.inPip) {
+                Column((if (overlayMode) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).background(Color(when {
+                    !overlayMode -> 0xFF10131A
+                    SolidBgState.full -> 0xFF000000
+                    SolidBgState.on -> 0x99000000
+                    else -> 0x66000000
+                }))) {
+                    Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (fromMini) shrinkToMini() else onBack() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                        Column(Modifier.weight(1f)) {
+                            Text(current?.title ?: "", color = Color.White, fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(fromLabel, color = RoomTextDim, fontSize = 11.sp)
+                        }
+                        TextButton(onClick = {
+                            speed = when (speed) { 1.0f -> 1.25f; 1.25f -> 1.5f; 1.5f -> 2.0f; 2.0f -> 0.5f; 0.5f -> 0.75f; else -> 1.0f }
+                            exo.setPlaybackSpeed(speed)
+                            try { vlcBackup.player?.setRate(speed) } catch (e: Exception) { }
+                        }) { Text("${speed}x", color = RoomYellow, fontWeight = FontWeight.Bold) }
+                        TextButton(onClick = {
+                            sleepChoice = when (sleepChoice) { 0 -> 15; 15 -> 30; 30 -> 45; 45 -> 60; else -> 0 }
+                        }) {
+                            Icon(Icons.Filled.Bedtime, "Sleep timer", tint = if (sleepChoice > 0) RoomYellow else Color.White, modifier = Modifier.size(19.dp))
+                            if (sleepChoice > 0) Text(" ${(sleepLeftMs / 60000) + 1}m", color = RoomYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        if (hasCc) {
+                            IconButton(onClick = { ccOn = !ccOn }) {
+                                Icon(
+                                    if (ccOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
+                                    "Captions", tint = if (ccOn) RoomYellow else Color(0xFF4DD0E1),
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                        IconButton(onClick = {
+                            val t = position
+                            if (!marks.contains(t)) saveMarks((marks + t).sorted())
+                            showMarks = true
+                        }) {
+                            Icon(Icons.Filled.BookmarkAdd, "Save this moment", tint = Color(0xFF00C853), modifier = Modifier.size(21.dp))
+                        }
+                        if (marks.isNotEmpty()) {
+                            IconButton(onClick = { showMarks = !showMarks }) {
+                                Icon(Icons.Filled.Bookmarks, "Favorite moments", tint = RoomYellow, modifier = Modifier.size(21.dp))
+                            }
+                        }
+                        IconButton(onClick = { shrinkToMini() }) {
+                            Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color(0xFF82B1FF))
+                        }
+                        IconButton(onClick = { zoomFill = !zoomFill }) {
+                            Icon(
+                                Icons.Filled.ZoomIn, "Zoom to fill the screen",
+                                tint = if (zoomFill) RoomYellow else Color.White,
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
+                        IconButton(onClick = { applyFullscreen(!fullscreen) }) {
+                            Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                "Fullscreen", tint = Color(0xFFFF7043))
+                        }
+                        IconButton(onClick = { locked = true; showControls = false }) {
+                            Icon(Icons.Filled.LockOpen, "Lock controls", tint = Color(0xFFFF5252))
+                        }
+                    }
+                    if (playerError != null) {
+                        Text(
+                            playerError!!, color = Color.White, fontSize = 14.sp,
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(Color(0xCC8F1D1D))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                    if (vlcMode && playerError == null) {
+                        Text(
+                            "Backup player — this file's format needs it", color = Color.White, fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(Color(0xB33A2A5A))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                    if (showMarks && marks.isNotEmpty()) {
+                        Column(
+                            Modifier.padding(start = 12.dp, top = 8.dp)
+                                .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on || SolidBgState.full) Color(0xFF1D2130) else Color(0xE61D2130))
+                                .padding(10.dp)
+                        ) {
+                            Text("Favorite moments", color = RoomYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            marks.forEach { t ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        fmtDur(t), color = Color.White, fontSize = 14.sp,
+                                        modifier = Modifier
+                                            .combinedClickable(onClick = { seekAny(t); playAny() })
+                                            .padding(vertical = 4.dp, horizontal = 2.dp)
+                                    )
+                                    IconButton(onClick = { saveMarks(marks - t) }, modifier = Modifier.size(30.dp)) {
+                                        Icon(Icons.Filled.Delete, "Remove moment", tint = RoomTextDim, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (overlayMode) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(4.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { goToItem(index - 1) },
+                            modifier = Modifier.size(52.dp)) {
+                            Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(30.dp))
+                        }
+                        IconButton(onClick = { seekAny((position - 10_000).coerceAtLeast(0)) },
+                            modifier = Modifier.size(52.dp)) {
+                            Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
+                        }
+                        IconButton(
+                            onClick = { hushed = false; if (isPlaying) pauseAny() else playAny() },
+                            modifier = Modifier.size(68.dp).clip(CircleShape)
+                                .background(Brush.linearGradient(listOf(Color(0xFFF26D21), Color(0xFFFF6EC7))))
+                        ) {
+                            Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                "Play or pause", tint = Color.White, modifier = Modifier.size(38.dp))
+                        }
+                        IconButton(onClick = { seekAny(position + 10_000) },
+                            modifier = Modifier.size(52.dp)) {
+                            Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
+                        }
+                        IconButton(onClick = { goToItem(index + 1) },
+                            modifier = Modifier.size(52.dp)) {
+                            Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(30.dp))
+                        }
+                    }
+                    if (overlayMode) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(4.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(fmtDur(position), color = Color.White, fontSize = 12.sp)
+                        Slider(
+                            value = sliderPos,
+                            onValueChange = { seeking = true; sliderPos = it },
+                            onValueChangeFinished = {
+                                if (duration > 0) seekAny((sliderPos * duration).toLong())
+                                seeking = false
+                            },
+                            colors = SliderDefaults.colors(thumbColor = RoomOrange, activeTrackColor = RoomOrange),
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                        )
+                        Text(fmtDur(duration), color = Color.White, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+    }
+    val playerBox: @Composable (Modifier, Boolean) -> Unit = { mod, overlayMode ->
         Box(mod.background(Color.Black)) {
             if (vlcMode) {
                 AndroidView(
@@ -4045,153 +4202,7 @@ fun PlayerScreen(
                     }
                 }
             )
-            if (showControls && !locked && !PipControl.inPip) {
-                Column(Modifier.fillMaxSize().background(Color(when {
-                    SolidBgState.full -> 0xFF000000
-                    SolidBgState.on -> 0x99000000
-                    else -> 0x66000000
-                }))) {
-                    Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { if (fromMini) shrinkToMini() else onBack() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
-                        Column(Modifier.weight(1f)) {
-                            Text(current?.title ?: "", color = Color.White, fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(fromLabel, color = RoomTextDim, fontSize = 11.sp)
-                        }
-                        TextButton(onClick = {
-                            speed = when (speed) { 1.0f -> 1.25f; 1.25f -> 1.5f; 1.5f -> 2.0f; 2.0f -> 0.5f; 0.5f -> 0.75f; else -> 1.0f }
-                            exo.setPlaybackSpeed(speed)
-                            try { vlcBackup.player?.setRate(speed) } catch (e: Exception) { }
-                        }) { Text("${speed}x", color = RoomYellow, fontWeight = FontWeight.Bold) }
-                        TextButton(onClick = {
-                            sleepChoice = when (sleepChoice) { 0 -> 15; 15 -> 30; 30 -> 45; 45 -> 60; else -> 0 }
-                        }) {
-                            Icon(Icons.Filled.Bedtime, "Sleep timer", tint = if (sleepChoice > 0) RoomYellow else Color.White, modifier = Modifier.size(19.dp))
-                            if (sleepChoice > 0) Text(" ${(sleepLeftMs / 60000) + 1}m", color = RoomYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                        if (hasCc) {
-                            IconButton(onClick = { ccOn = !ccOn }) {
-                                Icon(
-                                    if (ccOn) Icons.Filled.ClosedCaption else Icons.Filled.ClosedCaptionDisabled,
-                                    "Captions", tint = if (ccOn) RoomYellow else Color(0xFF4DD0E1),
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                        }
-                        IconButton(onClick = {
-                            val t = position
-                            if (!marks.contains(t)) saveMarks((marks + t).sorted())
-                            showMarks = true
-                        }) {
-                            Icon(Icons.Filled.BookmarkAdd, "Save this moment", tint = Color(0xFF00C853), modifier = Modifier.size(21.dp))
-                        }
-                        if (marks.isNotEmpty()) {
-                            IconButton(onClick = { showMarks = !showMarks }) {
-                                Icon(Icons.Filled.Bookmarks, "Favorite moments", tint = RoomYellow, modifier = Modifier.size(21.dp))
-                            }
-                        }
-                        IconButton(onClick = { shrinkToMini() }) {
-                            Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color(0xFF82B1FF))
-                        }
-                        IconButton(onClick = { zoomFill = !zoomFill }) {
-                            Icon(
-                                Icons.Filled.ZoomIn, "Zoom to fill the screen",
-                                tint = if (zoomFill) RoomYellow else Color.White,
-                                modifier = Modifier.size(21.dp)
-                            )
-                        }
-                        IconButton(onClick = { applyFullscreen(!fullscreen) }) {
-                            Icon(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                "Fullscreen", tint = Color(0xFFFF7043))
-                        }
-                        IconButton(onClick = { locked = true; showControls = false }) {
-                            Icon(Icons.Filled.LockOpen, "Lock controls", tint = Color(0xFFFF5252))
-                        }
-                    }
-                    if (playerError != null) {
-                        Text(
-                            playerError!!, color = Color.White, fontSize = 14.sp,
-                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(Color(0xCC8F1D1D))
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
-                    if (vlcMode && playerError == null) {
-                        Text(
-                            "Backup player — this file's format needs it", color = Color.White, fontSize = 12.sp,
-                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 12.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(Color(0xB33A2A5A))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                    if (showMarks && marks.isNotEmpty()) {
-                        Column(
-                            Modifier.padding(start = 12.dp, top = 8.dp)
-                                .clip(RoundedCornerShape(10.dp)).background(if (SolidBgState.on || SolidBgState.full) Color(0xFF1D2130) else Color(0xE61D2130))
-                                .padding(10.dp)
-                        ) {
-                            Text("Favorite moments", color = RoomYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            marks.forEach { t ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        fmtDur(t), color = Color.White, fontSize = 14.sp,
-                                        modifier = Modifier
-                                            .combinedClickable(onClick = { seekAny(t); playAny() })
-                                            .padding(vertical = 4.dp, horizontal = 2.dp)
-                                    )
-                                    IconButton(onClick = { saveMarks(marks - t) }, modifier = Modifier.size(30.dp)) {
-                                        Icon(Icons.Filled.Delete, "Remove moment", tint = RoomTextDim, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { goToItem(index - 1) },
-                            modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(30.dp))
-                        }
-                        IconButton(onClick = { seekAny((position - 10_000).coerceAtLeast(0)) },
-                            modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
-                        }
-                        IconButton(
-                            onClick = { hushed = false; if (isPlaying) pauseAny() else playAny() },
-                            modifier = Modifier.size(68.dp).clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(Color(0xFFF26D21), Color(0xFFFF6EC7))))
-                        ) {
-                            Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                "Play or pause", tint = Color.White, modifier = Modifier.size(38.dp))
-                        }
-                        IconButton(onClick = { seekAny(position + 10_000) },
-                            modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = RoomYellow, modifier = Modifier.size(30.dp))
-                        }
-                        IconButton(onClick = { goToItem(index + 1) },
-                            modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Filled.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(30.dp))
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(fmtDur(position), color = Color.White, fontSize = 12.sp)
-                        Slider(
-                            value = sliderPos,
-                            onValueChange = { seeking = true; sliderPos = it },
-                            onValueChangeFinished = {
-                                if (duration > 0) seekAny((sliderPos * duration).toLong())
-                                seeking = false
-                            },
-                            colors = SliderDefaults.colors(thumbColor = RoomOrange, activeTrackColor = RoomOrange),
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
-                        )
-                        Text(fmtDur(duration), color = Color.White, fontSize = 12.sp)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                }
-            }
+            controlsColumn(overlayMode)
             if (gestureMsg != null) {
                 Text(
                     gestureMsg!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
@@ -4242,23 +4253,25 @@ fun PlayerScreen(
         // shows (May, 2026-11-10): the full player layout used to
         // come along — no pause button, and a slice of the
         // what's-next list bleeding into the window's bottom.
-        playerBox(Modifier.fillMaxSize())
+        playerBox(Modifier.fillMaxSize(), true)
     } else if (fullscreen) {
-        playerBox(Modifier.fillMaxSize())
+        playerBox(Modifier.fillMaxSize(), true)
     } else {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
             // The tall stage's height, computed here where the
-            // screen width is in scope: the video's shape with a
-            // floor of 250 dp (see the tall branch below).
-            val tallStageH = (maxWidth / PipControl.aspect.coerceIn(1.0f, 1.30f))
-                .coerceIn(250.dp, 420.dp)
+            // screen size is in scope: just the video at its own
+            // shape (the controls live in a bar beneath it now),
+            // kept to at most 45% of the screen height so the
+            // Up Next list keeps its room.
+            val tallStageH = (maxWidth / PipControl.aspect.coerceIn(0.5f, 2.39f))
+                .coerceIn(120.dp, (maxHeight * 0.45f).coerceAtLeast(120.dp))
             if (wide) {
                 // Up Next lives at the BOTTOM now, under the video,
                 // on wide screens too (May, 2026-11-11) — it used
                 // to be a column down the right side.
                 Column(Modifier.fillMaxSize()) {
-                    playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f), true)
                     Column(Modifier.fillMaxWidth().weight(1f).background(RoomCard)) {
                         Text("Up next", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(14.dp))
@@ -4285,17 +4298,14 @@ fun PlayerScreen(
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
-                    // Tall screens get a taller stage (May, 2026-11-12):
-                    // locked to 16:9 the box was a short strip on a
-                    // narrow screen — shorter than the controls
-                    // themselves, which spilled onto the Up Next list.
-                    // The stage height is set outright (tallStageH,
-                    // computed above): the aspect-ratio version
-                    // still measured short on her tall screen and
-                    // the controls crushed into each other, so the
-                    // height now comes straight from the screen
-                    // width and the video's shape, no guessing.
-                    playerBox(Modifier.fillMaxWidth().height(tallStageH))
+                    // Tall screens (May, 2026-11-12): the stage is
+                    // just the video at its own shape, and the
+                    // controls sit in their own bar underneath —
+                    // overlaid on the picture they kept landing
+                    // slid down and crushed on tall screens, so
+                    // they don't overlay here anymore.
+                    playerBox(Modifier.fillMaxWidth().height(tallStageH), false)
+                    controlsColumn(false)
                     // The list gets the leftover height by weight,
                     // inside its own column — the wide layout's
                     // shape, which behaves. As a direct fillMaxSize
