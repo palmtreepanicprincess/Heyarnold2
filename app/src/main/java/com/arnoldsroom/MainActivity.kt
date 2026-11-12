@@ -3681,7 +3681,7 @@ fun PlayerScreen(
     // fullscreen first (the handler above).
     fun shrinkToMini() {
         savePos(index, position)
-        MiniTvState.aspect = PipControl.aspect
+        MiniTvState.aspect.value = PipControl.aspect
         onShrink(index)
     }
     BackHandler(enabled = !fullscreen) { shrinkToMini() }
