@@ -4271,6 +4271,11 @@ fun PlayerScreen(
             // Up Next list keeps its room.
             val tallStageH = (maxWidth / PipControl.aspect.coerceIn(0.5f, 2.39f))
                 .coerceIn(120.dp, (maxHeight * 0.45f).coerceAtLeast(120.dp))
+            // Computed here, in BoxWithConstraints scope: inside
+            // the layout's Column lambdas maxWidth/maxHeight are
+            // not reachable as implicit receivers (that was build
+            // 43299056918's compile error).
+            val diagLabel = "DIAG TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
             if (wide) {
                 // Up Next lives at the BOTTOM now, under the video,
                 // on wide screens too (May, 2026-11-11) — it used
@@ -4314,7 +4319,7 @@ fun PlayerScreen(
                     // coded pieces, so one screenshot shows which
                     // piece lands where. Remove once fixed.
                     Text(
-                        "DIAG TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}",
+                        diagLabel,
                         color = Color(0xFFFFEB3B), fontSize = 10.sp,
                         modifier = Modifier.fillMaxWidth().background(Color(0xFF3A1A4A))
                     )
