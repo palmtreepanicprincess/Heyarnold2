@@ -4202,7 +4202,12 @@ fun PlayerScreen(
                     }
                 }
             )
-            controlsColumn(overlayMode)
+            // Overlay modes only: in bar mode (tall screens) the
+            // controls live under the video via the layout's own
+            // controlsColumn(false) call — drawing them in here too
+            // painted a second copy over the picture and crushed
+            // both (May's screenshot, 2026-11-12).
+            if (overlayMode) controlsColumn(true)
             if (gestureMsg != null) {
                 Text(
                     gestureMsg!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
