@@ -130,6 +130,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
@@ -1288,6 +1289,7 @@ fun ArnoldsRoomApp() {
                 onOpenRadio = { showRadio = true },
                 fxOn = fxOn,
                 onToggleFx = { fxOn = !fxOn },
+                onToggleDim = { idleDim = !idleDim },
                 doorsOpen = doorGone,
                 dimmed = idleDim,
                 onHotspot = { dest -> go(dest, needsVideos = dest !is Screen.MusicLibrary) },
@@ -2038,7 +2040,7 @@ private fun navBarInsetDp(): Dp {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, doorsOpen: Boolean, dimmed: Boolean = false) {
+fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPhase, onCyclePhase: () -> Unit, musicOn: Boolean, onToggleMusic: () -> Unit, onOpenRadio: () -> Unit, fxOn: Boolean, onToggleFx: () -> Unit, onToggleDim: () -> Unit, doorsOpen: Boolean, dimmed: Boolean = false) {
     val spots = listOf(
         Hotspot(0.13f, 0.44f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
         Hotspot(0.47f, 0.350f, "Shelves", Icons.Filled.Folder, Screen.Categories, Color(0xFF7C4DFF)),
@@ -2060,7 +2062,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         Hotspot(0.075f, 0.653f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.708f, 0.682f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.912f, 0.534f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
+        Hotspot(0.315f, 0.870f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF)),
+        Hotspot(0.712f, 0.210f, "Lights", Icons.Filled.Lightbulb, null, Color(0xFFFFC107))
     )
     val tallSpots = listOf(
         Hotspot(0.115f, 0.478f, "Search", Icons.Filled.Search, Screen.Search, Color(0xFF2979FF)),
@@ -2071,7 +2074,8 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         Hotspot(0.058f, 0.575f, "Favorites", Icons.Filled.Favorite, Screen.Library(Filter.FAVORITES), Color(0xFFF50057)),
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.903f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
-        Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF))
+        Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF)),
+        Hotspot(0.700f, 0.330f, "Lights", Icons.Filled.Lightbulb, null, Color(0xFFFFC107))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
@@ -2119,6 +2123,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         scope.launch {
             val d = spot.dest
             if (spot.label == "Plaza") onOpenRadio()
+            else if (spot.label == "Lights") onToggleDim()
             else if (d != null) onHotspot(d) else onShuffle()
         }
     }
@@ -2300,6 +2305,33 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         )
         if (dimAlpha > 0.01f) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dimAlpha)))
+        }
+        // While the room is dimmed, the Lights ring stays visible
+        // on the lamp (May, 2026-11-12): it's the switch she tapped
+        // to dim, drawn lit on top of the veil. Its own tap is
+        // intentionally empty — the wake tap is caught and
+        // swallowed by the root touch witness, which undims.
+        if (dimmed) {
+            val lightsSpot = activeSpots.firstOrNull { it.label == "Lights" }
+            if (lightsSpot != null) {
+                Box(
+                    Modifier.offset(
+                        x = drawnW * lightsSpot.fx - if (tallMode) 26.dp else 34.dp,
+                        y = drawnH * lightsSpot.fy - if (tallMode) 26.dp else 34.dp
+                    )
+                ) {
+                    RoomChip(
+                        spot = lightsSpot,
+                        art = roomBitmap,
+                        imgWpx = drawnWpx,
+                        index = activeSpots.indexOf(lightsSpot),
+                        tapped = false,
+                        compact = tallMode,
+                        pulse = 0.45f,
+                        onTap = {}
+                    )
+                }
+            }
         }
         if (!dimmed) {
         Row(
