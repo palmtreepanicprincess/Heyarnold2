@@ -3939,12 +3939,18 @@ fun PlayerScreen(
     // nothing for them to fight with.
     val controlsColumn: @Composable (Boolean) -> Unit = { overlayMode ->
             if ((showControls || !overlayMode) && !locked && !PipControl.inPip) {
-                Column((if (overlayMode) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).background(Color(when {
+                Column((if (overlayMode) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(202.dp)).background(Color(when {
                     !overlayMode -> 0xFF3A1A4A // DIAGNOSTIC (2026-11-12): purple for one build so a screenshot shows exactly which piece paints what; revert to 0xFF10131A once the tall layout is fixed
                     SolidBgState.full -> 0xFF000000
                     SolidBgState.on -> 0x99000000
                     else -> 0x66000000
                 }))) {
+                    // DIAGNOSTIC (2026-11-12, diag3): a bright strip
+                    // as the bar's first child — in the screenshot it
+                    // must sit directly under the video. Overlay mode
+                    // does not draw it. Remove once the tall layout
+                    // is confirmed fixed.
+                    if (!overlayMode) Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0xFF00E676)))
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { if (fromMini) shrinkToMini() else onBack() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
@@ -4278,7 +4284,7 @@ fun PlayerScreen(
             // the layout's Column lambdas maxWidth/maxHeight are
             // not reachable as implicit receivers (that was build
             // 43299056918's compile error).
-            val diagLabel = "DIAG2 TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
+            val diagLabel = "DIAG3 TALL stage=$tallStageH asp=${PipControl.aspect} max=${maxWidth}x${maxHeight}"
             if (wide) {
                 // Up Next lives at the BOTTOM now, under the video,
                 // on wide screens too (May, 2026-11-11) — it used
@@ -4335,7 +4341,7 @@ fun PlayerScreen(
                     // with the stage's measurement, and the controls
                     // inside the stage crushed and slid down over
                     // the list (May's screenshots, 2026-11-12).
-                    Column(Modifier.fillMaxWidth().height(400.dp).background(Color(0xFF0F2A24))) {
+                    Column(Modifier.fillMaxWidth().weight(1f).background(Color(0xFF0F2A24))) {
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
