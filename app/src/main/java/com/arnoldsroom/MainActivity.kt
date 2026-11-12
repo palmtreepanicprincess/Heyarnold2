@@ -2075,7 +2075,7 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         Hotspot(0.752f, 0.600f, "Shuffle", Icons.Filled.Shuffle, null, Color(0xFF00ACC1)),
         Hotspot(0.903f, 0.452f, "Settings", Icons.Filled.Settings, Screen.Settings, Color(0xFFFF5252)),
         Hotspot(0.312f, 0.646f, "Music", Icons.Filled.MusicNote, Screen.MusicLibrary, Color(0xFFB388FF)),
-        Hotspot(0.700f, 0.330f, "Lights", Icons.Filled.Lightbulb, null, Color(0xFFFFC107))
+        Hotspot(0.700f, 0.292f, "Lights", Icons.Filled.Lightbulb, null, Color(0xFFFFC107))
     )
     // (Shake-to-shuffle lived here until 2026-11-10 — May asked for it
     // gone; tapping the remote is the way to shuffle now.)
