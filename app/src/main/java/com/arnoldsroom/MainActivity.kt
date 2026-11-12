@@ -4284,9 +4284,15 @@ fun PlayerScreen(
                     // locked to 16:9 the box was a short strip on a
                     // narrow screen — shorter than the controls
                     // themselves, which spilled onto the Up Next list.
-                    // The box now follows the video's shape with a
-                    // floor, so the buttons and slider always fit.
-                    playerBox(Modifier.fillMaxWidth().aspectRatio(PipControl.aspect.coerceIn(1.0f, 1.30f)))
+                    // The stage height is set outright here, with a
+                    // floor of 250 dp: the aspect-ratio version still
+                    // measured short on her tall screen and the
+                    // controls crushed into each other, so the height
+                    // is now computed from the screen width and the
+                    // video's shape, no modifier guessing.
+                    val stageH = (maxWidth / PipControl.aspect.coerceIn(1.0f, 1.30f))
+                        .coerceIn(250.dp, 420.dp)
+                    playerBox(Modifier.fillMaxWidth().height(stageH))
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
