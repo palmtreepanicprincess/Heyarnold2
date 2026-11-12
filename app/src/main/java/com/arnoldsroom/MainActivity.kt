@@ -2320,22 +2320,44 @@ fun RoomScreen(onHotspot: (Screen) -> Unit, onShuffle: () -> Unit, phase: DayPha
         if (dimmed) {
             val lightsSpot = activeSpots.firstOrNull { it.label == "Lights" }
             if (lightsSpot != null) {
+                // The lit ring rides in a twin of the painting
+                // container — same offset, same requiredSize, same
+                // zoom layer — so it lands on the exact pixel the
+                // un-dimmed ring occupied. As a bare sibling it used
+                // the same drawnW/drawnH numbers WITHOUT the
+                // container's crop offset, so on any screen whose
+                // shape differs from the painting's (May's S10+,
+                // found 2026-11-12) the ring jumped down by the crop
+                // amount the moment the room dimmed. The Fold's
+                // cover screen matches the tall painting's shape, so
+                // the offset there is ~0 and it never showed.
                 Box(
-                    Modifier.offset(
-                        x = drawnW * lightsSpot.fx - if (tallMode) 26.dp else 34.dp,
-                        y = drawnH * lightsSpot.fy - if (tallMode) 26.dp else 34.dp
-                    )
+                    Modifier
+                        .offset(x = offX, y = offY)
+                        .requiredSize(width = drawnW, height = drawnH)
+                        .graphicsLayer {
+                            scaleX = roomZoom.value
+                            scaleY = roomZoom.value
+                            transformOrigin = zoomOrigin
+                        }
                 ) {
-                    RoomChip(
-                        spot = lightsSpot,
-                        art = roomBitmap,
-                        imgWpx = drawnWpx,
-                        index = activeSpots.indexOf(lightsSpot),
-                        tapped = false,
-                        compact = tallMode,
-                        pulse = 0.45f,
-                        onTap = {}
-                    )
+                    Box(
+                        Modifier.offset(
+                            x = drawnW * lightsSpot.fx - if (tallMode) 26.dp else 34.dp,
+                            y = drawnH * lightsSpot.fy - if (tallMode) 26.dp else 34.dp
+                        )
+                    ) {
+                        RoomChip(
+                            spot = lightsSpot,
+                            art = roomBitmap,
+                            imgWpx = drawnWpx,
+                            index = activeSpots.indexOf(lightsSpot),
+                            tapped = false,
+                            compact = tallMode,
+                            pulse = 0.45f,
+                            onTap = {}
+                        )
+                    }
                 }
             }
         }
