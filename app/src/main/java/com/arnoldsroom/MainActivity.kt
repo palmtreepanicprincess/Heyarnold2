@@ -653,6 +653,12 @@ object MiniTvState {
     // menu restores it at full size instead of replaying the
     // shrink-in entrance (May, 2026-11-10).
     val everOpened = mutableStateOf(false)
+    // True once she has resized the TV herself (tap-steps or the
+    // corner drag). Until then the TV opens at a proper size for
+    // the screen it is on (May, 2026-11-12: at the old 216.dp
+    // default, the fixed frame and controls made it read as a
+    // small square, and she had to resize it every time).
+    val sizedByHer = mutableStateOf(false)
 }
 object MusicBoxState {
     val offX = mutableStateOf(0f)
@@ -3666,6 +3672,19 @@ fun PlayerScreen(
     // overflow cropped away. Off = the whole picture, letterboxed.
     var zoomFill by remember { mutableStateOf(false) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
+    // Backing out of the video drops it into the pop-up TV instead
+    // of closing it (May, 2026-11-12): the back arrow and the
+    // system back button both shrink, saving the exact spot first
+    // so the pop-up continues right here — and the pop-up opens
+    // with the video's real shape, handed over now while the full
+    // player still knows it. In fullscreen, back still leaves
+    // fullscreen first (the handler above).
+    fun shrinkToMini() {
+        savePos(index, position)
+        MiniTvState.aspect = PipControl.aspect
+        onShrink(index)
+    }
+    BackHandler(enabled = !fullscreen) { shrinkToMini() }
     var sleepChoice by remember { mutableStateOf(0) }
     var sleepLeftMs by remember { mutableStateOf(0L) }
     var hasCc by remember { mutableStateOf(false) }
@@ -4024,7 +4043,7 @@ fun PlayerScreen(
                     else -> 0x66000000
                 }))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                        IconButton(onClick = { shrinkToMini() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
                             Text(current?.title ?: "", color = Color.White, fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4062,13 +4081,7 @@ fun PlayerScreen(
                                 Icon(Icons.Filled.Bookmarks, "Favorite moments", tint = RoomYellow, modifier = Modifier.size(21.dp))
                             }
                         }
-                        IconButton(onClick = {
-                            // Save the exact spot first, so the mini player
-                            // continues right here instead of at the last
-                            // periodic save (or the beginning).
-                            savePos(index, position)
-                            onShrink(index)
-                        }) {
+                        IconButton(onClick = { shrinkToMini() }) {
                             Icon(Icons.Filled.PictureInPictureAlt, "Mini player", tint = Color(0xFF82B1FF))
                         }
                         IconButton(onClick = { zoomFill = !zoomFill }) {
@@ -4689,6 +4702,13 @@ fun MiniPlayerBox(
             // collision guard with the restored width, so a stale
             // smaller size from earlier can't snap the TV back
             // down when it reappears next to its neighbors.
+            // Open at a proper size until she picks her own (May,
+            // 2026-11-12): wide enough for the screen it opens on,
+            // so the TV never starts as the small square the old
+            // 216.dp default made of it.
+            if (!MiniTvState.sizedByHer.value) {
+                widthDp = (maxWDpLocal * 0.72f).coerceIn(260.dp, 380.dp)
+            }
             PopRects.lastGood["tv"] = widthDp.value
             onDispose { PopRects.tv = null }
         }
@@ -4792,12 +4812,14 @@ fun MiniPlayerBox(
                                 // arrows "did nothing" because they only
                                 // ever dragged).
                                 val steps = listOf(180.dp, 240.dp, 300.dp, 360.dp)
+                                MiniTvState.sizedByHer.value = true
                                 widthDp = steps.firstOrNull { it > widthDp + 12.dp } ?: 180.dp
                             }
                         }
                         .pointerInput(Unit) {
                             detectDragGestures { change, drag ->
                                 change.consume()
+                                MiniTvState.sizedByHer.value = true
                                 widthDp = (widthDp + with(density) { drag.x.toDp() })
                                     .coerceIn(140.dp, maxWDpLocal - 8.dp)
                             }
