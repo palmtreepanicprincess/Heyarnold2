@@ -3715,13 +3715,15 @@ fun PlayerScreen(
         }
     }
 
-    // Backing out of the video drops it into the pop-up TV instead
-    // of closing it (May, 2026-11-12): the back arrow and the
-    // system back button both shrink, saving the exact spot first
-    // so the pop-up continues right here — and the pop-up opens
-    // with the video's real shape, handed over now while the full
-    // player still knows it. In fullscreen, back still leaves
-    // fullscreen first (the handler by the state declarations).
+    // Backing out of the video with the system back button drops
+    // it into the pop-up TV instead of closing it (May, 2026-11-12):
+    // the shrink saves the exact spot first so the pop-up continues
+    // right here, and the pop-up opens with the video's real shape,
+    // handed over now while the full player still knows it. The
+    // on-screen back arrow is separate — it goes back to the
+    // previous page, as she asked later the same day. In
+    // fullscreen, back still leaves fullscreen first (the handler
+    // by the state declarations).
     fun shrinkToMini() {
         savePos(index, position)
         MiniTvState.aspect.value = PipControl.aspect
@@ -4044,7 +4046,7 @@ fun PlayerScreen(
                     else -> 0x66000000
                 }))) {
                     Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { shrinkToMini() }) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
+                        IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = Color.White) }
                         Column(Modifier.weight(1f)) {
                             Text(current?.title ?: "", color = Color.White, fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4272,7 +4274,13 @@ fun PlayerScreen(
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
-                    playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    // Tall screens get a taller stage (May, 2026-11-12):
+                    // locked to 16:9 the box was a short strip on a
+                    // narrow screen — shorter than the controls
+                    // themselves, which spilled onto the Up Next list.
+                    // The box now follows the video's shape with a
+                    // floor, so the buttons and slider always fit.
+                    playerBox(Modifier.fillMaxWidth().aspectRatio(PipControl.aspect.coerceIn(1.0f, 1.30f)))
                     Text("Up next", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(12.dp))
                     LazyColumn(Modifier.fillMaxSize()) {
