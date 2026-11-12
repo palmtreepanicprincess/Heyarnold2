@@ -2727,6 +2727,7 @@ fun VideoRow(
     onLongPress: () -> Unit,
     watched: Boolean = false
 ) {
+    val accent = paletteColor(v.title)
     Row(
         Modifier.fillMaxWidth()
             .background(if (selected) Color(0xFF2A3350) else Color.Transparent)
@@ -2734,7 +2735,7 @@ fun VideoRow(
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        VideoThumb(v.uri, Modifier.width(104.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(8.dp)))
+        VideoThumb(v.uri, Modifier.width(104.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).border(1.5.dp, accent, RoundedCornerShape(8.dp)))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(v.title, color = if (watched) RoomTextDim else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
@@ -2747,7 +2748,7 @@ fun VideoRow(
             if (v.durationMs > 0 && pos > 0) {
                 Spacer(Modifier.height(5.dp))
                 Box(Modifier.fillMaxWidth(0.7f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF3A405A))) {
-                    Box(Modifier.fillMaxWidth((pos.toFloat() / v.durationMs).coerceIn(0f, 1f)).height(4.dp).background(RoomOrange))
+                    Box(Modifier.fillMaxWidth((pos.toFloat() / v.durationMs).coerceIn(0f, 1f)).height(4.dp).background(accent))
                 }
             }
         }
@@ -2756,7 +2757,11 @@ fun VideoRow(
             if (fav) Icon(Icons.Filled.Favorite, "Favorite", tint = RoomOrange, modifier = Modifier.size(19.dp))
             Text(
                 when (cat) { AssignCat.MOVIE -> "Movie"; AssignCat.TV -> "TV"; AssignCat.NONE -> "—" },
-                color = RoomSky, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                color = when (cat) {
+                    AssignCat.MOVIE -> Color(0xFFFFC107)
+                    AssignCat.TV -> Color(0xFFB388FF)
+                    AssignCat.NONE -> RoomTextDim
+                }, fontSize = 11.sp, fontWeight = FontWeight.Bold
             )
         }
     }
@@ -2925,7 +2930,7 @@ fun ShowsScreen(
                             .combinedClickable(onClick = { onPick(sh.title) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Tv, null, tint = RoomYellow, modifier = Modifier.size(28.dp))
+                        Icon(Icons.Filled.Tv, null, tint = paletteColor(sh.title), modifier = Modifier.size(28.dp))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(sh.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -2938,7 +2943,7 @@ fun ShowsScreen(
                                 LinearProgressIndicator(
                                     progress = { watchedCount.toFloat() / epCount },
                                     modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = Color(0xFF00C853), trackColor = Color(0x33FFFFFF)
+                                    color = paletteColor(sh.title), trackColor = Color(0x33FFFFFF)
                                 )
                                 Spacer(Modifier.height(5.dp))
                                 Text(
@@ -3049,7 +3054,7 @@ fun MovieFoldersScreen(folders: List<MovieFolder>, onPick: (String) -> Unit, onR
                             .combinedClickable(onClick = { onPick(mf.key) }).padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Movie, null, tint = RoomYellow, modifier = Modifier.size(28.dp))
+                        Icon(Icons.Filled.Movie, null, tint = paletteColor(mf.title), modifier = Modifier.size(28.dp))
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(mf.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
