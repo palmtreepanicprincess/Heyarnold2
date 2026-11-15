@@ -369,8 +369,45 @@ fun isJunkClip(v: VideoItem): Boolean {
 }
 
 // ---------- Folder auto-detection: shows, seasons, movie folders ----------
-private val seasonSegRegex = Regex("(?i)^(?:season|series)[\\s._-]*(\\d{1,2})\\b.*$|^s(\\d{1,2})$")
-private val specialsSegRegex = Regex("(?i)^specials?\\b.*$")
+// A season marker can sit anywhere in a folder name, not just at the
+// start: plenty of packs name the folder after the show AND the season
+// ("Roseanne Season 01 - fiveofseven"), and each of those folders used
+// to become its own one-season "show". The marker's start is where the
+// show's name ends. A range ("Seasons 1-6") still marks that spot for
+// title purposes, but it is not itself a season number.
+private data class SeasonMark(val season: Int?, val start: Int)
+
+private val seasonWordNumbers = mapOf(
+    "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6,
+    "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10, "eleven" to 11, "twelve" to 12
+)
+private val seasonWordRegex = Regex(
+    "(?i)\\b(?:seasons?|series)\\s*[-._]?\\s*(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b(?:\\s*[-–—]\\s*(\\d{1,2})\\b)?"
+)
+private val seasonCodeRegex = Regex("(?i)\\bs(\\d{1,2})\\b")
+private val specialsWordRegex = Regex("(?i)\\bspecials?\\b")
+
+private fun seasonMarker(seg: String): SeasonMark? {
+    specialsWordRegex.find(seg)?.let { return SeasonMark(0, it.range.first) }
+    seasonWordRegex.find(seg)?.let { m ->
+        if (m.groupValues[2].isNotEmpty()) return SeasonMark(null, m.range.first)
+        val n = m.groupValues[1].toIntOrNull() ?: seasonWordNumbers[m.groupValues[1].lowercase()]
+        return SeasonMark(n, m.range.first)
+    }
+    seasonCodeRegex.find(seg)?.let { m ->
+        return SeasonMark(m.groupValues[1].toIntOrNull(), m.range.first)
+    }
+    return null
+}
+
+// The show's name inside one folder segment: the part before its season
+// marker, cleaned. Null when the segment is only a season ("Season 1")
+// or carries no marker at all.
+private fun titleBeforeMarker(seg: String): String? {
+    val m = seasonMarker(seg) ?: return null
+    val t = cleanTitle(seg.substring(0, m.start)).trim(' ', '-', '(', '[', '–', '—')
+    return t.ifBlank { null }
+}
 private val epCodeRegex = Regex("(?i)s(\\d{1,2})[\\s._-]*e(\\d{1,3})")
 private val xCodeRegex = Regex("(?i)\\b(\\d{1,2})x(\\d{2,3})\\b")
 private val genericSegs = setOf(
@@ -391,34 +428,36 @@ fun cleanTitle(raw: String): String {
 fun pathSegments(v: VideoItem): List<String> =
     v.relPath.split('/').map { it.trim() }.filter { it.isNotEmpty() }
 
-fun seasonOfSegment(seg: String): Int? {
-    val t = seg.trim()
-    // "Specials" folders are season 0 — the files inside them are
-    // already numbered that way (S00E01).
-    if (specialsSegRegex.containsMatchIn(t)) return 0
-    return seasonSegRegex.find(t)?.let { m ->
-        (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
-    }
-}
+fun seasonOfSegment(seg: String): Int? = seasonMarker(seg.trim())?.season
 
 fun showTitleOf(v: VideoItem): String {
     val segs = pathSegments(v)
-    val sIdx = segs.indexOfFirst { seasonOfSegment(it) != null }
-    if (sIdx > 0) {
-        val cand = segs[sIdx - 1]
-        if (cand.lowercase() !in genericSegs) return cleanTitle(cand)
+    // The first folder carrying a season marker names the show: either
+    // the part of that same folder before the marker ("Roseanne
+    // Season 01 - fiveofseven" -> "Roseanne"), or, when the folder is
+    // only a season ("Season 1"), the folder above it.
+    for ((i, seg) in segs.withIndex()) {
+        if (seasonMarker(seg) == null) continue
+        titleBeforeMarker(seg)?.let { if (it.lowercase() !in genericSegs) return it }
+        if (i > 0) {
+            val cand = segs[i - 1]
+            if (cand.lowercase() !in genericSegs) return cleanTitle(cand)
+        }
+        break
     }
     epCodeRegex.find(v.name)?.let { m ->
         val t = cleanTitle(v.name.substring(0, m.range.first))
         if (t.isNotBlank()) return t
     }
     val last = segs.lastOrNull { it.lowercase() !in genericSegs }
-    if (last != null) return cleanTitle(last)
+    if (last != null) return titleBeforeMarker(last) ?: cleanTitle(last)
     return "Unknown Show"
 }
 
 fun seasonOf(v: VideoItem): Int {
-    for (s in pathSegments(v)) seasonOfSegment(s)?.let { return it }
+    // The deepest folder wins: a "(Seasons 1-6)" pack folder above must
+    // not outvote the "Season 3" folder the file actually sits in.
+    for (s in pathSegments(v).asReversed()) seasonOfSegment(s)?.let { return it }
     epCodeRegex.find(v.name)?.let { return it.groupValues[1].toIntOrNull() ?: 1 }
     xCodeRegex.find(v.name)?.let { return it.groupValues[1].toIntOrNull() ?: 1 }
     return 1
@@ -3130,7 +3169,7 @@ fun ShowsScreen(
         if (shows.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "No shows detected yet.\nPut episodes in a folder named after the show,\nwith Season 1, Season 2 folders inside,\nand they'll line up here on their own.",
+                    "No shows detected yet.\nPut episodes in a folder named after the show —\nSeason folders inside it, or the season right\nin the folder name — and they'll line up here.",
                     color = RoomTextDim, fontSize = 15.sp, modifier = Modifier.padding(24.dp)
                 )
             }
