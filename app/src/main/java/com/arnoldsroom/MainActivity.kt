@@ -642,7 +642,7 @@ private data class TreeFile(
     val uri: Uri, val name: String, val size: Long, val modifiedSec: Long, val segs: List<String>
 )
 
-fun scanTreeFiles(context: Context, treeUriStr: String): List<TreeFile> {
+private fun scanTreeFiles(context: Context, treeUriStr: String): List<TreeFile> {
     val out = mutableListOf<TreeFile>()
     val resolver = context.contentResolver
     val treeUri = Uri.parse(treeUriStr)
