@@ -4184,11 +4184,18 @@ fun PlayerScreen(
             act.requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
-            // Gestures first-swipe even mid-video (May, 2026-11-10):
-            // only the status bar hides; the nav bar stays up so
-            // back/home gestures work without a reveal swipe first.
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            controller.show(WindowInsetsCompat.Type.navigationBars())
+            if (on) {
+                // Fullscreen means the whole screen (May, 2026-11-15,
+                // reversing the 2026-11-10 call for this one spot):
+                // the navigation bar hides along with the status bar.
+                // A swipe from the edge still brings the bars back
+                // for a few seconds — the transient behavior is set
+                // at the root — so back/home stay reachable.
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+            }
         }
     }
     DisposableEffect(Unit) {
@@ -4204,6 +4211,23 @@ fun PlayerScreen(
 
     val current = queue.getOrNull(index)
     val playerCfg = LocalConfiguration.current
+    // Folding, unfolding and rotating don't recreate the activity
+    // (see the manifest's configChanges), and on a resize the system
+    // can quietly hand the navigation bar back — May hit exactly
+    // that on the big inner screen, where the bar stayed up in
+    // fullscreen and never left (2026-11-15). So the bar state is
+    // re-asserted whenever the screen's shape changes, not only at
+    // the moment fullscreen is toggled.
+    LaunchedEffect(fullscreen, playerCfg.screenWidthDp, playerCfg.screenHeightDp) {
+        val act = activity ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(act.window, act.window.decorView)
+        if (fullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
     val screenAspectF = playerCfg.screenWidthDp.toFloat() /
         playerCfg.screenHeightDp.toFloat().coerceAtLeast(1f)
     // The video controls, in two homes (May, 2026-11-12):
