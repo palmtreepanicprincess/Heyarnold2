@@ -33,6 +33,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Size
 import androidx.activity.ComponentActivity
@@ -465,9 +466,8 @@ fun detectMovieFolders(videos: List<VideoItem>, catOf: (VideoItem) -> AssignCat)
         }
         .sortedBy { it.title.lowercase() }
 
-fun loadVideos(resolver: ContentResolver): List<VideoItem> {
+private fun queryVideosOn(resolver: ContentResolver, collection: Uri): List<VideoItem> {
     val out = mutableListOf<VideoItem>()
-    val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
     val projection = mutableListOf(
         MediaStore.Video.Media._ID,
         MediaStore.Video.Media.DISPLAY_NAME,
@@ -511,15 +511,43 @@ fun loadVideos(resolver: ContentResolver): List<VideoItem> {
     return out
 }
 
+// Every video the app can see (May, 2026-11-14): the phone's own
+// library, any USB stick or hard drive plugged into the USB-C port
+// (Android indexes those as extra MediaStore volumes, so they join
+// on their own), plus any drive or folder she picked by hand in
+// Settings. The same file reachable two ways is only listed once —
+// the MediaStore copy wins, since it carries the real duration.
+fun loadVideos(context: Context): List<VideoItem> {
+    val resolver = context.contentResolver
+    val out = mutableListOf<VideoItem>()
+    val volumes: List<String?> = if (Build.VERSION.SDK_INT >= 30) {
+        try {
+            MediaStore.getExternalVolumeNames(context).toList()
+        } catch (e: Exception) {
+            listOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+    } else listOf(null)
+    for (vol in volumes) {
+        val collection = if (vol == null) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Video.Media.getContentUri(vol)
+        try { out.addAll(queryVideosOn(resolver, collection)) } catch (e: Exception) { }
+    }
+    val prefs = context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
+    val seen = out.map { it.name.lowercase() to it.sizeBytes }.toHashSet()
+    for (v in loadTreeVideos(context, prefs)) {
+        if ((v.name.lowercase() to v.sizeBytes) !in seen) out.add(v)
+    }
+    return out.distinctBy { it.uri.toString() }.sortedByDescending { it.dateAddedSec }
+}
+
 fun videoPermission(): String =
     if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO
     else Manifest.permission.READ_EXTERNAL_STORAGE
 
 // Her own music files, for the music player (May, 2026-11-10): the
 // audio side of MediaStore, songs only, sorted by title.
-fun loadSongs(resolver: ContentResolver): List<SongItem> {
+private fun querySongsOn(resolver: ContentResolver, collection: Uri): List<SongItem> {
     val out = mutableListOf<SongItem>()
-    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
     val projection = arrayOf(
         MediaStore.Audio.Media._ID,
         MediaStore.Audio.Media.TITLE,
@@ -559,6 +587,142 @@ fun loadSongs(resolver: ContentResolver): List<SongItem> {
     }
     return out
 }
+
+// Every song the app can see (May, 2026-11-14): same reach as the
+// videos — the phone's library, USB drives Android has indexed,
+// and any drive or folder picked by hand in Settings.
+fun loadSongs(context: Context): List<SongItem> {
+    val resolver = context.contentResolver
+    val out = mutableListOf<SongItem>()
+    val volumes: List<String?> = if (Build.VERSION.SDK_INT >= 30) {
+        try {
+            MediaStore.getExternalVolumeNames(context).toList()
+        } catch (e: Exception) {
+            listOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+    } else listOf(null)
+    for (vol in volumes) {
+        val collection = if (vol == null) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Audio.Media.getContentUri(vol)
+        try { out.addAll(querySongsOn(resolver, collection)) } catch (e: Exception) { }
+    }
+    val prefs = context.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE)
+    out.addAll(loadTreeSongs(context, prefs))
+    return out.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
+}
+
+// ---------- USB drives & picked folders ----------
+// A drive or folder she picks once in Settings (with the system
+// folder picker) is remembered for good: the app keeps the
+// permission and re-walks the folder on every scan, so whatever is
+// on that drive joins the library whenever it's plugged in. This
+// also covers drives Android hasn't indexed into MediaStore —
+// and another phone or tablet picked through the same picker.
+const val USB_TREES_KEY = "usb_trees"
+
+val USB_VIDEO_EXTS = setOf(
+    "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp", "3g2", "ts", "m2ts", "mts",
+    "mpg", "mpeg", "wmv", "flv", "f4v", "rm", "rmvb", "vob", "divx", "ogv", "asf"
+)
+val USB_AUDIO_EXTS = setOf(
+    "mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma",
+    "aif", "aiff", "alac", "ape", "mka"
+)
+
+fun savedTreeUris(prefs: SharedPreferences): List<String> =
+    (prefs.getStringSet(USB_TREES_KEY, emptySet()) ?: emptySet()).sorted()
+
+// Picked-folder files have no MediaStore row, so they get a steady
+// negative id hashed from their address: favorites, categories and
+// resume spots keyed by id keep working for them, and the id is
+// the same on every scan.
+fun treeItemId(uriStr: String): Long = -((uriStr.hashCode().toLong() and 0x7fff_ffffL) + 1L)
+
+private data class TreeFile(
+    val uri: Uri, val name: String, val size: Long, val modifiedSec: Long, val segs: List<String>
+)
+
+fun scanTreeFiles(context: Context, treeUriStr: String): List<TreeFile> {
+    val out = mutableListOf<TreeFile>()
+    val resolver = context.contentResolver
+    val treeUri = Uri.parse(treeUriStr)
+    val rootId = try { DocumentsContract.getTreeDocumentId(treeUri) } catch (e: Exception) { return out }
+    fun walk(docId: String, segs: List<String>, depth: Int) {
+        if (depth > 12 || out.size > 20000) return
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+        val proj = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
+        )
+        try {
+            resolver.query(childrenUri, proj, null, null, null)?.use { c ->
+                val idI = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameI = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeI = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val sizeI = c.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                val modI = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                while (c.moveToNext()) {
+                    val childId = c.getString(idI) ?: continue
+                    val name = c.getString(nameI) ?: continue
+                    val mime = c.getString(mimeI) ?: ""
+                    if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        walk(childId, segs + name, depth + 1)
+                    } else {
+                        out.add(
+                            TreeFile(
+                                uri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId),
+                                name = name,
+                                size = if (sizeI >= 0) c.getLong(sizeI) else 0L,
+                                modifiedSec = if (modI >= 0) c.getLong(modI) / 1000 else 0L,
+                                segs = segs
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) { }
+    }
+    walk(rootId, emptyList(), 0)
+    return out
+}
+
+fun loadTreeVideos(context: Context, prefs: SharedPreferences): List<VideoItem> =
+    savedTreeUris(prefs).flatMap { scanTreeFiles(context, it) }
+        .filter { it.name.substringAfterLast('.', "").lowercase() in USB_VIDEO_EXTS }
+        .map { f ->
+            val rel = if (f.segs.isEmpty()) "" else f.segs.joinToString("/") + "/"
+            VideoItem(
+                id = treeItemId(f.uri.toString()),
+                name = f.name,
+                title = f.name.substringBeforeLast('.', f.name),
+                uri = f.uri,
+                durationMs = 0L,
+                sizeBytes = f.size,
+                dateAddedSec = f.modifiedSec,
+                folder = rel.trim('/').substringBeforeLast('/', rel.trim('/')),
+                relPath = rel
+            )
+        }
+
+fun loadTreeSongs(context: Context, prefs: SharedPreferences): List<SongItem> =
+    savedTreeUris(prefs).flatMap { scanTreeFiles(context, it) }
+        .filter { it.name.substringAfterLast('.', "").lowercase() in USB_AUDIO_EXTS }
+        .map { f ->
+            val base = f.name.substringBeforeLast('.', f.name)
+            val m = Regex("^(\\d{1,3})[ ._-]+(.+)$").find(base)
+            SongItem(
+                id = treeItemId(f.uri.toString()),
+                title = (m?.groupValues?.get(2) ?: base).trim().ifBlank { base },
+                artist = f.segs.getOrNull(f.segs.size - 2)?.takeIf { it.isNotBlank() } ?: "Unknown artist",
+                album = f.segs.lastOrNull()?.takeIf { it.isNotBlank() } ?: "Unknown album",
+                durationMs = 0L,
+                track = m?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                uri = f.uri.toString()
+            )
+        }
 
 // Track numbers (May, 2026-11-10): MediaStore packs the disc into
 // the thousands — 1003 is disc 1 track 3, 2011 is disc 2 track 11 —
@@ -1131,7 +1295,7 @@ fun ArnoldsRoomApp() {
         }
     }
     LaunchedEffect(granted) {
-        if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+        if (granted) videos = withContext(Dispatchers.IO) { loadVideos(context) }
     }
     // Fresh scan on every entry (May, 2026-11-10): whenever she
     // steps into a video screen — library, categories, search, the
@@ -1140,7 +1304,7 @@ fun ArnoldsRoomApp() {
     // already reloads its songs each time it opens.)
     LaunchedEffect(screen, granted) {
         if (granted && screen !is Screen.Room) {
-            videos = withContext(Dispatchers.IO) { loadVideos(context.contentResolver) }
+            videos = withContext(Dispatchers.IO) { loadVideos(context) }
         }
     }
     fun go(dest: Screen, needsVideos: Boolean = true) {
@@ -2716,11 +2880,26 @@ fun VideoThumb(uri: Uri, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bmp by produceState<Bitmap?>(initialValue = null, uri) {
         value = withContext(Dispatchers.IO) {
-            try {
+            var b: Bitmap? = try {
                 if (Build.VERSION.SDK_INT >= 29)
                     context.contentResolver.loadThumbnail(uri, Size(320, 180), null)
                 else null
             } catch (e: Exception) { null }
+            if (b == null) {
+                // Files from a USB drive or a picked folder have no
+                // MediaStore thumbnail — pull a frame from the file
+                // itself instead of showing the blank placeholder.
+                b = try {
+                    val r = android.media.MediaMetadataRetriever()
+                    try {
+                        r.setDataSource(context, uri)
+                        r.getFrameAtTime(1_000_000)
+                    } finally {
+                        try { r.release() } catch (e: Exception) { }
+                    }
+                } catch (e: Exception) { null }
+            }
+            b
         }
     }
     Box(modifier.background(Color(0xFF2A2F42)), contentAlignment = Alignment.Center) {
@@ -3355,6 +3534,22 @@ fun SettingsScreen(
     onRoom: () -> Unit,
     onBack: () -> Unit
 ) {
+    val usbContext = LocalContext.current
+    val usbPrefs = remember { usbContext.getSharedPreferences("arnolds_room", Context.MODE_PRIVATE) }
+    var usbTrees by remember { mutableStateOf(savedTreeUris(usbPrefs)) }
+    val treeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                usbContext.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) { }
+            val cur = (usbPrefs.getStringSet(USB_TREES_KEY, emptySet()) ?: emptySet()).toMutableSet()
+            cur.add(uri.toString())
+            usbPrefs.edit().putStringSet(USB_TREES_KEY, cur).apply()
+            usbTrees = savedTreeUris(usbPrefs)
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Settings", onRoom, onBack, accent = Color(0xFFFF5252))
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3398,6 +3593,51 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     Switch(checked = solidFull, onCheckedChange = onToggleSolidFull)
+                }
+            }
+            item {
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(RoomCard)
+                        .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(14.dp)).padding(14.dp)
+                ) {
+                    Column {
+                        Text("USB drives & folders", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Plug a USB stick or hard drive into the phone's USB-C port and its movies and songs join the library on their own. If a drive doesn't show up by itself — or you want music and movies from another phone, or from one particular folder — tap below and pick it once. The app remembers it, and everything in it joins the library whenever it's plugged in.",
+                            color = RoomTextDim, fontSize = 12.5.sp
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = { treeLauncher.launch(null) },
+                            colors = ButtonDefaults.buttonColors(containerColor = RoomOrange)
+                        ) {
+                            Text("Add a USB drive or folder")
+                        }
+                        for (t in usbTrees) {
+                            val label = try {
+                                val docId = DocumentsContract.getTreeDocumentId(Uri.parse(t))
+                                (docId.substringAfterLast('/').substringAfter(':').ifBlank { docId }).ifBlank { "Drive or folder" }
+                            } catch (e: Exception) { "Drive or folder" }
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(label, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    try {
+                                        usbContext.contentResolver.releasePersistableUriPermission(
+                                            Uri.parse(t), Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (e: Exception) { }
+                                    val cur = (usbPrefs.getStringSet(USB_TREES_KEY, emptySet()) ?: emptySet()).toMutableSet()
+                                    cur.remove(t)
+                                    usbPrefs.edit().putStringSet(USB_TREES_KEY, cur).apply()
+                                    usbTrees = savedTreeUris(usbPrefs)
+                                }) { Text("Remove", color = RoomSky) }
+                            }
+                        }
+                    }
                 }
             }
             if (!granted) item {
@@ -5211,7 +5451,7 @@ fun MusicLibraryScreen(
     // recomposes the lists.
     val favTickSnapshot = favTick
     LaunchedEffect(audioGranted) {
-        if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context.contentResolver) }
+        if (audioGranted) songs = withContext(Dispatchers.IO) { loadSongs(context) }
     }
     // Back steps out one level at a time (May, 2026-11-10): an
     // album opened from inside an artist returns to that artist's
