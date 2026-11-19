@@ -1552,7 +1552,8 @@ fun ArnoldsRoomApp() {
                 onShows = { navTo(Screen.Shows) },
                 onMovieFolders = { navTo(Screen.MovieFolders) },
                 onRoom = { navTo(Screen.Room) },
-                onBack = { navigateBack() }
+                onBack = { navigateBack() },
+                onRefresh = { videoRefreshTick++ }
             )
             is Screen.Shows -> ShowsScreen(
                 shows = detectShows(videos, ::catOf),
@@ -3098,10 +3099,29 @@ fun CategoriesScreen(
     onShows: () -> Unit,
     onMovieFolders: () -> Unit,
     onRoom: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRefresh: (() -> Unit)? = null
 ) {
+    var catRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(catRefreshing) {
+        if (catRefreshing) { delay(1000); catRefreshing = false }
+    }
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("The Shelves — Categories", onRoom, onBack, accent = Color(0xFF7C4DFF))
+        ScreenHeader("The Shelves — Categories", onRoom, onBack, accent = Color(0xFF7C4DFF)) {
+            if (onRefresh != null) {
+                IconButton(
+                    onClick = { if (!catRefreshing) { catRefreshing = true; onRefresh() } },
+                    enabled = !catRefreshing,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh, "Refresh — look for newly connected drives",
+                        tint = if (catRefreshing) RoomTextDim else RoomYellow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
         LazyColumn(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(
