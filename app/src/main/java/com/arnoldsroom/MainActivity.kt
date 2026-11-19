@@ -86,6 +86,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -104,6 +106,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.BookmarkAdd
@@ -1083,13 +1086,22 @@ fun ArnoldsRoomApp() {
     // Start silent if the phone is silenced (May, 2026-11-10): when
     // the ringer is on vibrate or fully off, the app opens muted.
     // The Music toggle can still turn it on by hand.
+    // Remembered across visits (May, 2026-11-19): once she has set
+    // the Music button herself, that choice is what the app reopens
+    // with — off stays off, on stays on. The ringer rule below only
+    // picks the very first default, before she has ever touched it.
     var musicOn by remember {
         mutableStateOf(
-            try {
+            if (prefs.contains("room_music_on")) prefs.getBoolean("room_music_on", true)
+            else try {
                 val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
                 am.ringerMode == android.media.AudioManager.RINGER_MODE_NORMAL
             } catch (e: Exception) { true }
         )
+    }
+    fun setMusicOn(v: Boolean) {
+        musicOn = v
+        prefs.edit().putBoolean("room_music_on", v).apply()
     }
     var doorGone by remember { mutableStateOf(false) }
     // Sky effects master switch (May, 2026-11-10): one button beside
@@ -1346,6 +1358,17 @@ fun ArnoldsRoomApp() {
             videos = withContext(Dispatchers.IO) { loadVideos(context) }
         }
     }
+    // The shelves' Refresh button (May, 2026-11-19): plug a drive
+    // or another phone in, tap Refresh on a shelf, and the library
+    // is re-read on the spot — every MediaStore volume (a freshly
+    // connected drive joins that list once Android indexes it)
+    // plus every drive or folder picked by hand in Settings.
+    var videoRefreshTick by remember { mutableStateOf(0) }
+    LaunchedEffect(videoRefreshTick) {
+        if (videoRefreshTick > 0 && granted) {
+            videos = withContext(Dispatchers.IO) { loadVideos(context) }
+        }
+    }
     fun go(dest: Screen, needsVideos: Boolean = true) {
         if (needsVideos && !granted) {
             pendingDest = dest
@@ -1500,7 +1523,7 @@ fun ArnoldsRoomApp() {
                     }
                 },
                 musicOn = musicOn,
-                onToggleMusic = { musicOn = !musicOn },
+                onToggleMusic = { setMusicOn(!musicOn) },
                 onOpenRadio = { showRadio = true },
                 fxOn = fxOn,
                 onToggleFx = { fxOn = !fxOn },
@@ -1580,7 +1603,8 @@ fun ArnoldsRoomApp() {
                     savedPos = ::savedPos,
                     onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, folder?.title ?: "Movies")) },
                     onRoom = { navTo(Screen.Room) },
-                    onBack = { navigateBack() }
+                    onBack = { navigateBack() },
+                    onRefresh = { videoRefreshTick++ }
                 )
             }
             is Screen.Library -> LibraryScreen(
@@ -1593,7 +1617,8 @@ fun ArnoldsRoomApp() {
                 onPlay = { queue, idx -> navTo(Screen.Player(queue, idx, s.filter.label)) },
                 onRoom = { navTo(Screen.Room) },
                 onBack = { navigateBack() },
-                onStats = { navTo(Screen.Stats) }
+                onStats = { navTo(Screen.Stats) },
+                onRefresh = { videoRefreshTick++ }
             )
             is Screen.Search -> SearchScreen(
                 items = videos,
@@ -1716,7 +1741,7 @@ fun ArnoldsRoomApp() {
             // the song before she even steps into the room.
             Column(
                 Modifier.align(Alignment.TopStart).padding(12.dp)
-                    .clickable { musicOn = !musicOn },
+                    .clickable { setMusicOn(!musicOn) },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
@@ -3342,10 +3367,15 @@ fun LibraryScreen(
     onPlay: (List<VideoItem>, Int) -> Unit,
     onRoom: () -> Unit,
     onBack: () -> Unit,
-    onStats: (() -> Unit)? = null
+    onStats: (() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null
 ) {
     var sort by remember { mutableStateOf(SortMode.NEWEST) }
     var version by remember { mutableStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (refreshing) { delay(1000); refreshing = false }
+    }
     var assignTarget by remember { mutableStateOf<VideoItem?>(null) }
     var selected by remember { mutableStateOf<VideoItem?>(null) }
     val sorted = remember(items, sort, version) {
@@ -3365,6 +3395,19 @@ fun LibraryScreen(
             Filter.UNSORTED.label -> Color(0xFF90A4AE)
             else -> Color(0xFFFF5722)
         }) {
+            if (onRefresh != null) {
+                IconButton(
+                    onClick = { if (!refreshing) { refreshing = true; onRefresh() } },
+                    enabled = !refreshing,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh, "Refresh — look for newly connected drives",
+                        tint = if (refreshing) RoomTextDim else RoomYellow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
             if (onStats != null) {
                 TextButton(onClick = onStats) {
                     Text("Stats", color = RoomYellow, fontSize = 13.sp)
@@ -4563,7 +4606,22 @@ fun PlayerScreen(
         // what's-next list bleeding into the window's bottom.
         playerBox(Modifier.fillMaxSize(), true)
     } else if (fullscreen) {
-        playerBox(Modifier.fillMaxSize(), true)
+        // The controls ride in their OWN layer over the video box
+        // (May, 2026-11-19): on her Galaxy S10+ the top row kept
+        // getting cut off in fullscreen, and the only thing that
+        // changed it was the video view's resize mode — the overlay
+        // lived in the same box as that view. Hoisted out here,
+        // nothing the video view measures or draws can clip or
+        // cover the controls, and the cutout padding keeps the top
+        // row clear of the camera pill in landscape (the app draws
+        // into the cutout area). The gesture layer stays inside
+        // playerBox, under this layer, exactly as before.
+        Box(Modifier.fillMaxSize()) {
+            playerBox(Modifier.fillMaxSize(), false)
+            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)) {
+                controlsColumn(true)
+            }
+        }
     } else {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
