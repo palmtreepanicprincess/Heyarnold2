@@ -5870,7 +5870,7 @@ fun MusicLibraryScreen(
             ),
             modifier = Modifier.fillMaxWidth()
         )
-        Box(Modifier.fillMaxWidth().height(10.dp).background(Color(0xFFFFFF00)))
+        Spacer(Modifier.height(10.dp))
         if (artistPick != null && albumPick == null) {
             // An artist opens onto their albums first (May,
             // 2026-11-10): pick the record, then its songs — in
@@ -5897,7 +5897,20 @@ fun MusicLibraryScreen(
             val playOrder = artistSongs.sortedWith(
                 compareBy<SongItem> { albumOrder[albumKeyOf(it)] ?: Int.MAX_VALUE }.then(byTrackOrder())
             )
-            Row(Modifier.fillMaxWidth().background(Color(0x88FF0000)), verticalAlignment = Alignment.CenterVertically) {
+            // The header is two short lines (May, 2026-11-22):
+            // buttons + the sort chip on one row, the counts on
+            // their own line under it. The first version put
+            // everything on one row — on the narrow cover
+            // screen the row ran out of width, the chip was
+            // measured at a sliver, its label wrapped into a
+            // tall invisible stack, and the whole row ballooned
+            // to ~200 dp, leaving a huge empty stretch at the
+            // top of the page (proven by the colour diagnostic
+            // that same night: the red row band was the tall
+            // one; the spacers and the album list were exact).
+            // One line per job now, and the chip's label can
+            // never wrap.
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { if (playOrder.isNotEmpty()) onPlaySong(playOrder, 0) },
                     colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
@@ -5915,26 +5928,29 @@ fun MusicLibraryScreen(
                     Spacer(Modifier.width(6.dp))
                     Text("Shuffle", fontWeight = FontWeight.Bold)
                 }
-                Spacer(Modifier.width(10.dp))
-                Text("${artistAlbums.size} albums \u2022 ${artistSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (albumsByYear) Color(0xFF4DD0E1) else Color(0xFF232A33))
                         .border(1.5.dp, if (albumsByYear) Color(0xFF10131A) else Color(0xFF39424E), RoundedCornerShape(50))
-                        .border(3.dp, Color(0xFFFF00FF), RoundedCornerShape(50))
                         .clickable { albumsByYear = !albumsByYear }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
                     Text(
                         if (albumsByYear) "Sort: Year" else "Sort: A–Z",
                         color = if (albumsByYear) Color(0xFF10131A) else RoomTextDim,
-                        fontWeight = FontWeight.Bold, fontSize = 13.sp
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        maxLines = 1
                     )
                 }
             }
-            Box(Modifier.fillMaxWidth().height(6.dp).background(Color(0xFF00FF00)))
-            LazyColumn(Modifier.fillMaxSize().background(Color(0x550000FF)), state = MusicLibState.artistAlbumsList) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${artistAlbums.size} albums \u2022 ${artistSongs.size} songs",
+                color = RoomTextDim, fontSize = 12.5.sp, maxLines = 1
+            )
+            Spacer(Modifier.height(6.dp))
+            LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.artistAlbumsList) {
                 items(artistAlbums, key = { it.key }) { entry ->
                     val list = entry.value
                     val name = list.firstOrNull()?.album ?: ""
@@ -6244,7 +6260,11 @@ fun MusicLibraryScreen(
         }
         // The now-playing strip, at the bottom of the screen
         // (May, 2026-11-11) — it used to sit up under the header.
-        if (MusicState.hasMedia && !inDetail) {
+        // It rides on every library page, album and artist
+        // pages included (May, 2026-11-22); only the player
+        // screen itself goes without, and that is a different
+        // screen entirely.
+        if (MusicState.hasMedia) {
             Spacer(Modifier.height(10.dp))
             val stripArt = rememberAlbumArt(MusicState.current)
             Row(
