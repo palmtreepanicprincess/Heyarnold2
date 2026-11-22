@@ -5870,7 +5870,7 @@ fun MusicLibraryScreen(
             ),
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(10.dp).background(Color(0xFFFFFF00)))
         if (artistPick != null && albumPick == null) {
             // An artist opens onto their albums first (May,
             // 2026-11-10): pick the record, then its songs — in
@@ -5897,7 +5897,7 @@ fun MusicLibraryScreen(
             val playOrder = artistSongs.sortedWith(
                 compareBy<SongItem> { albumOrder[albumKeyOf(it)] ?: Int.MAX_VALUE }.then(byTrackOrder())
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(Color(0x88FF0000)), verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { if (playOrder.isNotEmpty()) onPlaySong(playOrder, 0) },
                     colors = ButtonDefaults.buttonColors(containerColor = MusicAccent, contentColor = Color(0xFF10131A))
@@ -5922,6 +5922,7 @@ fun MusicLibraryScreen(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (albumsByYear) Color(0xFF4DD0E1) else Color(0xFF232A33))
                         .border(1.5.dp, if (albumsByYear) Color(0xFF10131A) else Color(0xFF39424E), RoundedCornerShape(50))
+                        .border(3.dp, Color(0xFFFF00FF), RoundedCornerShape(50))
                         .clickable { albumsByYear = !albumsByYear }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
@@ -5932,8 +5933,8 @@ fun MusicLibraryScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.artistAlbumsList) {
+            Box(Modifier.fillMaxWidth().height(6.dp).background(Color(0xFF00FF00)))
+            LazyColumn(Modifier.fillMaxSize().background(Color(0x550000FF)), state = MusicLibState.artistAlbumsList) {
                 items(artistAlbums, key = { it.key }) { entry ->
                     val list = entry.value
                     val name = list.firstOrNull()?.album ?: ""
