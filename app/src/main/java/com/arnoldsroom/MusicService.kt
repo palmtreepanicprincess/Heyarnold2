@@ -33,7 +33,13 @@ data class SongItem(
     val album: String,
     val durationMs: Long,
     val track: Int = 0,
-    val uri: String
+    val uri: String,
+    // The album's own artist tag, when the file carries one
+    // (May, 2026-11-22): keeps two artists' same-named albums
+    // apart and compilations together. Blank when untagged.
+    val albumArtist: String = "",
+    // The year tag, 0 when the file carries none.
+    val year: Int = 0
 )
 
 // Shared, process-wide view of the music player's state. The service

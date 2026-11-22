@@ -596,7 +596,9 @@ private fun querySongsOn(resolver: ContentResolver, collection: Uri): List<SongI
         MediaStore.Audio.Media.ARTIST,
         MediaStore.Audio.Media.ALBUM,
         MediaStore.Audio.Media.DURATION,
-        MediaStore.Audio.Media.TRACK
+        MediaStore.Audio.Media.TRACK,
+        MediaStore.Audio.Media.YEAR,
+        MediaStore.Audio.Media.ALBUM_ARTIST
     )
     resolver.query(
         collection, projection,
@@ -609,6 +611,11 @@ private fun querySongsOn(resolver: ContentResolver, collection: Uri): List<SongI
         val alI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
         val dI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
         val trI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+        // Year and album artist are read gently (May, 2026-11-22):
+        // an index that isn't there on some phone must not sink
+        // the whole scan, so these two look up by index, not name.
+        val yI = c.getColumnIndex(MediaStore.Audio.Media.YEAR)
+        val aaI = c.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST)
         while (c.moveToNext()) {
             val id = c.getLong(idI)
             val title = c.getString(tI)?.takeIf { it.isNotBlank() } ?: "Unknown title"
@@ -622,7 +629,9 @@ private fun querySongsOn(resolver: ContentResolver, collection: Uri): List<SongI
                     album = album,
                     durationMs = c.getLong(dI),
                     track = c.getInt(trI),
-                    uri = Uri.withAppendedPath(collection, id.toString()).toString()
+                    uri = Uri.withAppendedPath(collection, id.toString()).toString(),
+                    albumArtist = if (aaI >= 0) c.getString(aaI)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "" else "",
+                    year = if (yI >= 0) c.getInt(yI) else 0
                 )
             )
         }
@@ -776,6 +785,21 @@ fun byTrackOrder(): Comparator<SongItem> = compareBy(
     { if (it.track > 0) trackNum(it.track) else Int.MAX_VALUE },
     { it.title.lowercase() }
 )
+
+// An album is a name PLUS the artist who made it (May,
+// 2026-11-22): two different artists can each have an album
+// called "Greatest Hits", and those are two different records —
+// grouping or opening by name alone pours them into one. The
+// album-artist tag wins when a file carries one (it also keeps a
+// compilation together under its album artist); otherwise the
+// track artist stands in.
+fun SongItem.albumOwner(): String = albumArtist.ifBlank { artist }
+fun albumKeyOf(s: SongItem): String = s.album + "" + s.albumOwner()
+
+// The year an album wears when sorting by year: the earliest
+// year any of its songs carries, 0 when none is tagged.
+fun albumYearOf(list: List<SongItem>): Int =
+    list.map { it.year }.filter { it > 0 }.minOrNull() ?: 0
 fun trackLabel(track: Int, multiDisc: Boolean): String? = when {
     track <= 0 -> null
     multiDisc -> "${trackDisc(track)}-${trackNum(track)}"
@@ -836,7 +860,13 @@ object MusicLibState {
     val tab = mutableStateOf(0)
     val query = mutableStateOf("")
     val albumPick = mutableStateOf<String?>(null)
+    // The artist who owns the picked album (May, 2026-11-22):
+    // an album pick is a name plus this owner, so another
+    // artist's same-named album never pours into the open one.
+    val albumOwnerPick = mutableStateOf<String?>(null)
     val artistPick = mutableStateOf<String?>(null)
+    // An artist's albums list A–Z (false) or by year (true).
+    val artistAlbumsByYear = mutableStateOf(false)
     val playlistPick = mutableStateOf<String?>(null)
     val songsList = LazyListState()
     val albumsList = LazyListState()
@@ -5577,6 +5607,7 @@ fun MusicLibraryScreen(
     var query by MusicLibState.query
     var tab by MusicLibState.tab // 0 Songs, 1 Albums, 2 Artists, 3 Favorites, 4 Playlists
     var albumPick by MusicLibState.albumPick
+    var albumOwnerPick by MusicLibState.albumOwnerPick
     var artistPick by MusicLibState.artistPick
     var playlistPick by MusicLibState.playlistPick
     var favTick by remember { mutableStateOf(0) }
@@ -5600,8 +5631,10 @@ fun MusicLibraryScreen(
     fun stepBackOneLevel() {
         if (albumPick != null && artistPick != null) {
             albumPick = null
+            albumOwnerPick = null
         } else {
             albumPick = null
+            albumOwnerPick = null
             artistPick = null
             playlistPick = null
         }
@@ -5613,7 +5646,11 @@ fun MusicLibraryScreen(
     fun matches(s: SongItem) =
         query.isBlank() || s.title.contains(query, true) || s.artist.contains(query, true) ||
             s.album.contains(query, true)
-    val albums = songs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
+    // Albums key on name + owner (May, 2026-11-22), never the
+    // name alone, so same-named albums by different artists
+    // stay two albums everywhere in the library.
+    val albums = songs.groupBy { albumKeyOf(it) }.entries
+        .sortedBy { it.value.firstOrNull()?.album?.lowercase() ?: "" }
     val artists = songs.groupBy { it.artist }.entries.sortedBy { it.key.lowercase() }
     val inDetail = albumPick != null || artistPick != null || playlistPick != null
     BackHandler(enabled = inDetail) {
@@ -5766,8 +5803,26 @@ fun MusicLibraryScreen(
             // track order, numbers showing. Play and Shuffle here
             // still cover everything the artist has.
             val artistSongs = songs.filter { it.artist == artistPick }
-            val artistAlbums = artistSongs.groupBy { it.album }.entries.sortedBy { it.key.lowercase() }
-            val playOrder = artistSongs.sortedWith(compareBy<SongItem> { it.album.lowercase() }.then(byTrackOrder()))
+            // Albums group by name + owner here too, and the
+            // list wears the sort she picked (May, 2026-11-22):
+            // A–Z, or by year with untagged years last.
+            var albumsByYear by MusicLibState.artistAlbumsByYear
+            val artistAlbumsGrouped = artistSongs.groupBy { albumKeyOf(it) }.entries
+            val artistAlbums = if (albumsByYear) {
+                artistAlbumsGrouped.sortedWith(
+                    compareBy<Map.Entry<String, List<SongItem>>> {
+                        val y = albumYearOf(it.value)
+                        if (y > 0) y else Int.MAX_VALUE
+                    }.thenBy { it.value.firstOrNull()?.album?.lowercase() ?: "" }
+                )
+            } else {
+                artistAlbumsGrouped.sortedBy { it.value.firstOrNull()?.album?.lowercase() ?: "" }
+            }
+            // Play follows the order the albums are shown in.
+            val albumOrder = artistAlbums.mapIndexed { i, e -> e.key to i }.toMap()
+            val playOrder = artistSongs.sortedWith(
+                compareBy<SongItem> { albumOrder[albumKeyOf(it)] ?: Int.MAX_VALUE }.then(byTrackOrder())
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
                     onClick = { if (playOrder.isNotEmpty()) onPlaySong(playOrder, 0) },
@@ -5788,12 +5843,30 @@ fun MusicLibraryScreen(
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("${artistAlbums.size} albums \u2022 ${artistSongs.size} songs", color = RoomTextDim, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(50))
+                        .background(if (albumsByYear) Color(0xFF4DD0E1) else Color(0xFF232A33))
+                        .border(1.5.dp, if (albumsByYear) Color(0xFF10131A) else Color(0xFF39424E), RoundedCornerShape(50))
+                        .clickable { albumsByYear = !albumsByYear }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        if (albumsByYear) "Sort: Year" else "Sort: A–Z",
+                        color = if (albumsByYear) Color(0xFF10131A) else RoomTextDim,
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.artistAlbumsList) {
-                items(artistAlbums, key = { it.key }) { (name, list) ->
+                items(artistAlbums, key = { it.key }) { entry ->
+                    val list = entry.value
+                    val name = list.firstOrNull()?.album ?: ""
+                    val owner = list.firstOrNull()?.albumOwner() ?: ""
+                    val albumYear = albumYearOf(list)
                     Row(
-                        Modifier.fillMaxWidth().clickable { albumPick = name }
+                        Modifier.fillMaxWidth().clickable { albumPick = name; albumOwnerPick = owner }
                             .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -5813,7 +5886,7 @@ fun MusicLibraryScreen(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                "${list.size} songs",
+                                if (albumYear > 0) "$albumYear \u2022 ${list.size} songs" else "${list.size} songs",
                                 color = RoomTextDim, fontSize = 12.5.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
@@ -5825,7 +5898,9 @@ fun MusicLibraryScreen(
         }
         if (inDetail) {
             val rawDetail = when {
-                albumPick != null -> songs.filter { it.album == albumPick }
+                albumPick != null -> songs.filter {
+                    it.album == albumPick && (albumOwnerPick == null || it.albumOwner() == albumOwnerPick)
+                }
                 artistPick != null -> songs.filter { it.artist == artistPick }
                 else -> playlistIds(prefs, playlistPick!!).mapNotNull { id -> songs.firstOrNull { it.id == id } }
             }
@@ -5954,13 +6029,16 @@ fun MusicLibraryScreen(
                 }
             }
             1 -> {
-                val shownAlbums = albums.filter { (name, list) ->
-                    query.isBlank() || name.contains(query, true) || list.any { matches(it) }
+                val shownAlbums = albums.filter { (_, list) ->
+                    query.isBlank() || list.firstOrNull()?.album?.contains(query, true) == true || list.any { matches(it) }
                 }
                 LazyColumn(Modifier.fillMaxSize(), state = MusicLibState.albumsList) {
-                    items(shownAlbums, key = { it.key }) { (name, list) ->
+                    items(shownAlbums, key = { it.key }) { entry ->
+                        val list = entry.value
+                        val name = list.firstOrNull()?.album ?: ""
+                        val owner = list.firstOrNull()?.albumOwner() ?: ""
                         Row(
-                            Modifier.fillMaxWidth().clickable { albumPick = name }
+                            Modifier.fillMaxWidth().clickable { albumPick = name; albumOwnerPick = owner }
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -5980,7 +6058,7 @@ fun MusicLibraryScreen(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    "${list.firstOrNull()?.artist ?: ""} • ${list.size} songs",
+                                    "${list.firstOrNull()?.albumOwner() ?: ""} • ${list.size} songs",
                                     color = RoomTextDim, fontSize = 12.5.sp,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis
                                 )
@@ -6016,7 +6094,7 @@ fun MusicLibraryScreen(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    "${list.size} songs • ${list.map { it.album }.distinct().size} albums",
+                                    "${list.size} songs • ${list.map { albumKeyOf(it) }.distinct().size} albums",
                                     color = RoomTextDim, fontSize = 12.5.sp
                                 )
                             }
