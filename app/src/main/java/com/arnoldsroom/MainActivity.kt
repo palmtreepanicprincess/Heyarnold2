@@ -800,6 +800,71 @@ fun albumKeyOf(s: SongItem): String = s.album + "" + s.albumOwner()
 // year any of its songs carries, 0 when none is tagged.
 fun albumYearOf(list: List<SongItem>): Int =
     list.map { it.year }.filter { it > 0 }.minOrNull() ?: 0
+
+// ---------- Album art ----------
+// Covers come from the music itself (May, 2026-11-22):
+// MediaStore's thumbnail service first, the file's own embedded
+// picture second. One fetch per album, kept in memory — the key
+// is the album key, so every song on a record shares one cover,
+// and an album with no art is remembered as having none instead
+// of being re-asked on every scroll.
+object AlbumArtCache {
+    private val map = java.util.Collections.synchronizedMap(mutableMapOf<String, Bitmap?>())
+    fun has(key: String): Boolean = map.containsKey(key)
+    fun get(key: String): Bitmap? = map[key]
+    fun put(key: String, art: Bitmap?) { map[key] = art }
+}
+
+fun fetchAlbumArt(context: Context, song: SongItem): Bitmap? {
+    val key = albumKeyOf(song)
+    if (AlbumArtCache.has(key)) return AlbumArtCache.get(key)
+    var bmp: Bitmap? = null
+    val uri = Uri.parse(song.uri)
+    if (Build.VERSION.SDK_INT >= 29) {
+        try {
+            bmp = context.contentResolver.loadThumbnail(uri, Size(512, 512), null)
+        } catch (e: Exception) { bmp = null }
+    }
+    if (bmp == null) {
+        try {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(context, uri)
+                val bytes = r.embeddedPicture
+                if (bytes != null) bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } finally {
+                try { r.release() } catch (e: Exception) { }
+            }
+        } catch (e: Exception) { bmp = null }
+    }
+    // A screenful of covers stays light: nothing kept is wider
+    // than 512 px, whichever way it arrived.
+    if (bmp != null && (bmp.width > 512 || bmp.height > 512)) {
+        val scale = 512f / maxOf(bmp.width, bmp.height)
+        val scaled = Bitmap.createScaledBitmap(
+            bmp,
+            (bmp.width * scale).toInt().coerceAtLeast(1),
+            (bmp.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+        if (scaled != bmp) { bmp.recycle(); bmp = scaled }
+    }
+    AlbumArtCache.put(key, bmp)
+    return bmp
+}
+
+@Composable
+fun rememberAlbumArt(song: SongItem?): Bitmap? {
+    val context = LocalContext.current
+    val key = song?.let { albumKeyOf(it) }
+    var art by remember(key) { mutableStateOf(key?.let { AlbumArtCache.get(it) }) }
+    LaunchedEffect(key) {
+        if (song != null && key != null && !AlbumArtCache.has(key)) {
+            art = withContext(Dispatchers.IO) { fetchAlbumArt(context, song) }
+        }
+    }
+    return art
+}
 fun trackLabel(track: Int, multiDisc: Boolean): String? = when {
     track <= 0 -> null
     multiDisc -> "${trackDisc(track)}-${trackNum(track)}"
@@ -5533,6 +5598,9 @@ private fun SongRow(
     val fav = prefs.getBoolean("music_fav_${s.id}", false)
     val isCurrent = MusicState.hasMedia && MusicState.current?.id == s.id
     val rowColor = paletteColor(s.title + s.artist)
+    // The album's cover stands in the circle (May, 2026-11-22) —
+    // except inside an album, where the track number owns it.
+    val art = rememberAlbumArt(if (trackLabel == null) s else null)
     Row(
         Modifier.fillMaxWidth()
             .combinedClickable(onClick = onPlay, onLongClick = onLongPress)
@@ -5551,6 +5619,12 @@ private fun SongRow(
                     color = if (isCurrent) MusicAccent else rowColor,
                     fontSize = if (trackLabel.length > 2) 10.5.sp else 14.sp,
                     fontWeight = FontWeight.Bold
+                )
+            } else if (art != null) {
+                Image(
+                    art.asImageBitmap(), null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize()
                 )
             } else {
                 Icon(
@@ -5865,6 +5939,7 @@ fun MusicLibraryScreen(
                     val name = list.firstOrNull()?.album ?: ""
                     val owner = list.firstOrNull()?.albumOwner() ?: ""
                     val albumYear = albumYearOf(list)
+                    val art = rememberAlbumArt(list.firstOrNull())
                     Row(
                         Modifier.fillMaxWidth().clickable { albumPick = name; albumOwnerPick = owner }
                             .padding(vertical = 10.dp),
@@ -5876,7 +5951,11 @@ fun MusicLibraryScreen(
                                 .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
+                            if (art != null) {
+                                Image(art.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+                            } else {
+                                Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
+                            }
                         }
                         Spacer(Modifier.width(11.dp))
                         Column {
@@ -6037,6 +6116,7 @@ fun MusicLibraryScreen(
                         val list = entry.value
                         val name = list.firstOrNull()?.album ?: ""
                         val owner = list.firstOrNull()?.albumOwner() ?: ""
+                        val art = rememberAlbumArt(list.firstOrNull())
                         Row(
                             Modifier.fillMaxWidth().clickable { albumPick = name; albumOwnerPick = owner }
                                 .padding(vertical = 10.dp),
@@ -6048,7 +6128,11 @@ fun MusicLibraryScreen(
                                     .border(1.5.dp, Color(0xFF10131A), RoundedCornerShape(9.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
+                                if (art != null) {
+                                    Image(art.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+                                } else {
+                                    Icon(Icons.Filled.Album, null, tint = paletteColor(name), modifier = Modifier.size(24.dp))
+                                }
                             }
                             Spacer(Modifier.width(11.dp))
                             Column {
@@ -6161,6 +6245,7 @@ fun MusicLibraryScreen(
         // (May, 2026-11-11) — it used to sit up under the header.
         if (MusicState.hasMedia && !inDetail) {
             Spacer(Modifier.height(10.dp))
+            val stripArt = rememberAlbumArt(MusicState.current)
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                     .background(Brush.horizontalGradient(listOf(MusicAccent.copy(alpha = 0.30f), Color(0xFFFF6EC7).copy(alpha = 0.30f))))
@@ -6169,7 +6254,15 @@ fun MusicLibraryScreen(
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
+                if (stripArt != null) {
+                    Image(
+                        stripArt.asImageBitmap(), null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(34.dp).clip(RoundedCornerShape(7.dp))
+                    )
+                } else {
+                    Icon(Icons.Filled.MusicNote, null, tint = MusicAccent, modifier = Modifier.size(20.dp))
+                }
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -6202,6 +6295,7 @@ fun MusicPlayerScreen(
 ) {
     val context = LocalContext.current
     val song = MusicState.current
+    val discArt = rememberAlbumArt(song)
     var scrub by remember { mutableStateOf<Float?>(null) }
     var markTick by remember { mutableStateOf(0) }
     // Subscribes this screen to bookmark changes (they live in prefs).
@@ -6341,14 +6435,25 @@ fun MusicPlayerScreen(
                 .border(3.dp, MusicAccent, CircleShape),
             contentAlignment = Alignment.Center
         ) {
+            if (discArt != null) {
+                // The cover rides the disc and turns with it
+                // (May, 2026-11-22), the way a record label does.
+                Image(
+                    discArt.asImageBitmap(), null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape).rotate(angle)
+                )
+            }
             Box(
                 Modifier.size(196.dp).clip(CircleShape)
                     .border(1.5.dp, Color(0xFFFF6EC7).copy(alpha = 0.55f), CircleShape)
             )
-            Icon(
-                Icons.Filled.MusicNote, null, tint = MusicAccent,
-                modifier = Modifier.size(106.dp).rotate(angle)
-            )
+            if (discArt == null) {
+                Icon(
+                    Icons.Filled.MusicNote, null, tint = MusicAccent,
+                    modifier = Modifier.size(106.dp).rotate(angle)
+                )
+            }
             Box(
                 Modifier.size(30.dp).clip(CircleShape).background(RoomDark)
                     .border(2.dp, MusicAccent, CircleShape)
